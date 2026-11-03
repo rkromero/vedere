@@ -28,3 +28,6 @@ Thumbs.db
 
 # railway
 .railway/
+
+# imágenes subidas en modo local
+apps/api/uploads/

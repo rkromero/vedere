@@ -1,9 +1,14 @@
 // Configuración del sitio. Lo variable viene de env (NEXT_PUBLIC_*), nunca hardcodeado.
+const publicApi = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+
 export const site = {
   name: 'Vedere',
   tagline: 'Anteojos online, ajustados en tu óptica más cercana',
   url: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
-  apiUrl: (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, ''),
+  /** URL pública de la API (navegador). */
+  apiUrl: publicApi,
+  /** URL de la API para llamadas desde el servidor Next (proxy y server components). */
+  apiServerUrl: (process.env.API_URL ?? publicApi).replace(/\/$/, ''),
   promo: {
     enabled: (process.env.NEXT_PUBLIC_PROMO_ENABLED ?? 'true') === 'true',
     text: process.env.NEXT_PUBLIC_PROMO_TEXT ?? 'Envío gratis y ajuste en tu óptica más cercana',

@@ -7,12 +7,14 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
   HOST: z.string().default('0.0.0.0'),
-  APP_VERSION: z.string().default('0.1.0'),
+  APP_VERSION: z.string().default('0.2.0'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatoria'),
 
   // Único origen permitido por CORS (la web).
   WEB_URL: z.url({ error: 'WEB_URL debe ser una URL válida' }),
+  // URL pública de esta API (para armar URLs de imágenes en modo local).
+  API_PUBLIC_URL: z.preprocess(emptyToUndefined, z.url().default('http://localhost:4000')),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET debe tener al menos 32 caracteres'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET debe tener al menos 32 caracteres'),
@@ -31,6 +33,11 @@ const envSchema = z.object({
 
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),
+
+  // Almacenamiento de imágenes: "r2" (Cloudflare) o "local" (disco; sólo desarrollo). Auto: r2 si hay credenciales.
+  STORAGE_DRIVER: z.preprocess(emptyToUndefined, z.enum(['r2', 'local', 'auto']).default('auto')),
+  UPLOADS_DIR: z.preprocess(emptyToUndefined, z.string().default('./uploads')),
+  MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
 
   // Cloudflare R2 (compatible S3). Opcionales hasta que se configure el bucket.
   R2_ACCOUNT_ID: z.preprocess(emptyToUndefined, z.string().optional()),

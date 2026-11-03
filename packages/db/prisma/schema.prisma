@@ -1,4 +1,4 @@
-// Esquema inicial de Vedere (prompt 1/6): usuarios, roles y refresh tokens.
+// Esquema de Vedere. Prompt 1: usuarios y sesiones. Prompt 2: catálogo (marcas, categorías, colecciones, productos, variantes, imágenes).
 
 generator client {
   provider = "prisma-client-js"
@@ -8,6 +8,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ============================================================
+// Usuarios y sesiones
+// ============================================================
 
 enum Rol {
   ADMIN
@@ -47,4 +51,193 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// ============================================================
+// Catálogo
+// ============================================================
+
+enum Linea {
+  SOL
+  RECETADO
+  MULTIFOCAL
+  ACCESORIO
+}
+
+enum Forma {
+  REDONDO
+  CUADRADO
+  OJO_DE_GATO
+  AVIADOR
+  RECTANGULAR
+}
+
+enum Genero {
+  UNISEX
+  MUJER
+  HOMBRE
+}
+
+enum Material {
+  ACETATO
+  METAL
+  TITANIO
+  TR90
+  MIXTO
+  OTRO
+}
+
+enum EstadoProducto {
+  BORRADOR
+  PUBLICADO
+  ARCHIVADO
+}
+
+enum TipoImagen {
+  FRENTE
+  PERFIL
+  TRES_CUARTOS
+  PUESTO
+  OTRA
+}
+
+/// Auditoría: createdById / updatedById referencian users.id (sin FK para no acoplar borrados).
+model Marca {
+  id          String   @id @default(cuid())
+  nombre      String
+  slug        String   @unique
+  logoUrl     String?  @map("logo_url")
+  activa      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  productos Producto[]
+
+  @@map("marcas")
+}
+
+model Categoria {
+  id          String   @id @default(cuid())
+  nombre      String
+  slug        String   @unique
+  padreId     String?  @map("padre_id")
+  padre       Categoria?  @relation("CategoriaArbol", fields: [padreId], references: [id], onDelete: SetNull)
+  hijas       Categoria[] @relation("CategoriaArbol")
+  orden       Int      @default(0)
+  activa      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  productos Producto[]
+
+  @@index([padreId])
+  @@map("categorias")
+}
+
+model Coleccion {
+  id            String    @id @default(cuid())
+  nombre        String
+  slug          String    @unique
+  colorHex      String    @map("color_hex")
+  bannerUrl     String?   @map("banner_url")
+  vigenciaDesde DateTime? @map("vigencia_desde")
+  vigenciaHasta DateTime? @map("vigencia_hasta")
+  activa        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdById   String?   @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+
+  productos Producto[]
+
+  @@map("colecciones")
+}
+
+model Producto {
+  id             String         @id @default(cuid())
+  nombre         String
+  slug           String         @unique
+  descripcion    String         @default("")
+  marcaId        String?        @map("marca_id")
+  marca          Marca?         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  categorias     Categoria[]
+  coleccionId    String?        @map("coleccion_id")
+  coleccion      Coleccion?     @relation(fields: [coleccionId], references: [id], onDelete: SetNull)
+  linea          Linea
+  material       Material?
+  forma          Forma?
+  genero         Genero         @default(UNISEX)
+  calibreMm      Int?           @map("calibre_mm")
+  puenteMm       Int?           @map("puente_mm")
+  varillaMm      Int?           @map("varilla_mm")
+  precio         Decimal        @db.Decimal(12, 2)
+  precioLista    Decimal?       @map("precio_lista") @db.Decimal(12, 2)
+  permiteReceta  Boolean        @default(false) @map("permite_receta")
+  destacado      Boolean        @default(false)
+  estado         EstadoProducto @default(BORRADOR)
+  seoTitle       String?        @map("seo_title")
+  seoDescription String?        @map("seo_description")
+  /// Contador para "más vendidos" (lo actualizan los pedidos).
+  vendidos       Int            @default(0)
+  publicadoEn    DateTime?      @map("publicado_en")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  createdById    String?        @map("created_by_id")
+  updatedById    String?        @map("updated_by_id")
+
+  variantes Variante[]
+
+  @@index([estado, linea])
+  @@index([marcaId])
+  @@index([coleccionId])
+  @@index([precio])
+  @@index([vendidos])
+  @@index([publicadoEn])
+  @@map("productos")
+}
+
+model Variante {
+  id              String   @id @default(cuid())
+  productoId      String   @map("producto_id")
+  producto        Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  colorArmazon    String   @map("color_armazon")
+  colorArmazonHex String?  @map("color_armazon_hex")
+  colorLente      String?  @map("color_lente")
+  colorLenteHex   String?  @map("color_lente_hex")
+  sku             String   @unique
+  stock           Int      @default(0)
+  stockMinimo     Int      @default(0) @map("stock_minimo")
+  activa          Boolean  @default(true)
+  orden           Int      @default(0)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     String?  @map("created_by_id")
+  updatedById     String?  @map("updated_by_id")
+
+  imagenes ImagenVariante[]
+
+  @@index([productoId])
+  @@index([colorArmazon])
+  @@map("variantes")
+}
+
+/// Imagen de una variante en 3 tamaños (WebP). `url` es la grande.
+model ImagenVariante {
+  id           String     @id @default(cuid())
+  varianteId   String     @map("variante_id")
+  variante     Variante   @relation(fields: [varianteId], references: [id], onDelete: Cascade)
+  tipo         TipoImagen @default(OTRA)
+  orden        Int        @default(0)
+  url          String
+  urlMediana   String?    @map("url_mediana")
+  urlMiniatura String?    @map("url_miniatura")
+  alt          String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@index([varianteId, orden])
+  @@map("imagenes_variante")
 }

@@ -1,17 +1,21 @@
+import path from 'node:path';
 import Fastify from 'fastify';
 import type { FastifyServerOptions } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import type { Env } from './env.js';
 import { loadEnv } from './env.js';
 import authPlugin from './plugins/auth.js';
 import { errorHandler } from './lib/errors.js';
+import { storageDriver } from './lib/storage.js';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
-import adminRoutes from './routes/admin.js';
-import uploadRoutes from './routes/uploads.js';
+import adminRoutes from './routes/admin/index.js';
+import catalogoRoutes from './routes/catalogo.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -31,11 +35,15 @@ export async function buildApp(opts: BuildAppOptions = {}) {
     logger: opts.logger ?? defaultLogger(env),
     // Railway / proxies: tomar la IP real del cliente para rate limiting.
     trustProxy: true,
+    bodyLimit: 2 * 1024 * 1024,
   });
 
   app.decorate('env', env);
 
-  await app.register(helmet, { global: true });
+  await app.register(helmet, {
+    global: true,
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // imágenes servidas en modo local
+  });
 
   // CORS: únicamente el dominio de la web, con credenciales (cookies).
   await app.register(cors, {
@@ -43,6 +51,7 @@ export async function buildApp(opts: BuildAppOptions = {}) {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Content-Disposition'],
   });
 
   await app.register(cookie);
@@ -53,6 +62,26 @@ export async function buildApp(opts: BuildAppOptions = {}) {
     timeWindow: '1 minute',
     allowList: (request) => request.url === '/health',
   });
+
+  await app.register(multipart, {
+    limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 1 },
+  });
+
+  // text/csv como string (importación de productos).
+  app.addContentTypeParser('text/csv', { parseAs: 'string' }, (_req, body, done) =>
+    done(null, body),
+  );
+
+  // Imágenes en modo local (desarrollo): /uploads/*
+  if (storageDriver(env) === 'local') {
+    await app.register(fastifyStatic, {
+      root: path.resolve(env.UPLOADS_DIR),
+      prefix: '/uploads/',
+      decorateReply: false,
+      cacheControl: true,
+      maxAge: '7d',
+    });
+  }
 
   await app.register(authPlugin);
 
@@ -66,7 +95,7 @@ export async function buildApp(opts: BuildAppOptions = {}) {
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(adminRoutes, { prefix: '/admin' });
-  await app.register(uploadRoutes, { prefix: '/uploads' });
+  await app.register(catalogoRoutes, { prefix: '/catalogo' });
 
   return app;
 }
