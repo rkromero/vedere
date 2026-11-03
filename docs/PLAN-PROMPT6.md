@@ -124,3 +124,9 @@ Flujo completo contra la API existente (`/checkout/*`, ya probada en prompts 4-5
 - Configuración: `TiendaConfigForm` (datos fiscales, Plan Rivedere meses/descuento, referidos descuento, carrito abandonado on/off) con `PUT /admin/config-tienda` (ADMIN) — mismo estilo que `AsignacionConfigForm`.
 
 ### Coordinador (F): Sentry API/web, Playwright (`apps/e2e`), backups, CI, README/.env.example, documento de entrega, integración final.
+
+## Estado al cortarse la sesión (2026-11-03)
+
+- Commits en `feat/checkout-pagos`: `1ac301e` (base DB/env/stubs) y `d4a48bb` (plan, `lib/plantillas.ts`, `lib/post-pago.ts`, stubs `referidos.ts`/`marketing.ts`/`FavoritoButton.tsx`, matcher `/mi-cuenta`).
+- Seis agentes (A, B, C, D, E, G) quedaron trabajando en el árbol de trabajo sin commitear: revisar `git status`, correr `tsc` en api y web, y los tests de API con `vedere_test_a` / `vedere_test_b`.
+- Pendiente del coordinador (F): Sentry en API (`lib/sentry.ts`, captura en `errorHandler`, `GET /admin/debug/error`) y web (`instrumentation.ts`, `instrumentation-client.ts`, `global-error.tsx`), `apps/e2e/playwright.config.ts` + specs de compra y paneles (chromium ya instalado con `playwright install chromium`), job e2e en `.github/workflows/ci.yml`, `.github/workflows/backup.yml` (pg_dump diario a R2) + `scripts/backup-db.sh`, README/.env.example, demo en Chrome, `docs/ENTREGA.md` + artefacto, push y PR.
