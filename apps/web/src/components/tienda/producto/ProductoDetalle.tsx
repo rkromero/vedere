@@ -20,8 +20,11 @@ import { site } from '@/config/site';
 import { LABELS } from '@/lib/format';
 import type { Producto } from '@/lib/types';
 import { useCart } from '@/lib/tienda/cart';
+import { useCuotas } from '@/lib/tienda/comercial';
 import { varianteInicial, LINEA_SLUG } from '@/lib/tienda/producto';
 import { registrarReciente } from '@/lib/tienda/recientes';
+import { track } from '@/lib/analytics';
+import { FavoritoButton } from '@/components/tienda/cuenta/FavoritoButton';
 import { AvisameForm } from './AvisameForm';
 import { Galeria } from './Galeria';
 import { GuiaTalles } from './GuiaTalles';
@@ -49,6 +52,27 @@ export function ProductoDetalle({
 
   useEffect(() => registrarReciente(producto.slug), [producto.slug]);
 
+  // view_item (GA4 / ViewContent en Meta): una vez por ficha, con el color inicial.
+  useEffect(() => {
+    const v = varianteInicial(producto, varianteInicialId) ?? producto.variantes[0];
+    track('view_item', {
+      value: producto.precio,
+      items: [
+        {
+          item_id: v?.sku ?? producto.id,
+          item_name: producto.nombre,
+          item_brand: producto.marca?.nombre,
+          item_category: producto.linea,
+          item_variant: v?.colorArmazon,
+          price: producto.precio,
+          quantity: 1,
+        },
+      ],
+    });
+    // Sólo al montar la ficha de este producto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [producto.id]);
+
   function elegirColor(id: string) {
     setVarianteId(id);
     setAgregado(false);
@@ -61,7 +85,7 @@ export function ProductoDetalle({
   const sinStock = !variante || variante.stock <= 0;
   const pocoStock = !!variante && variante.stock > 0 && variante.stock <= 3;
   const esRecetado = producto.permiteReceta;
-  const nCuotas = site.comercial.cuotas;
+  const nCuotas = useCuotas(producto.linea);
   const { calibreMm, puenteMm, varillaMm } = producto.medidas;
   const tieneMedidas = !!(calibreMm || puenteMm || varillaMm);
 
@@ -83,7 +107,7 @@ export function ProductoDetalle({
       Avisame cuando vuelva
     </Button>
   ) : (
-    <Button size="lg" className="w-full" onClick={onAgregar}>
+    <Button size="lg" className="w-full" onClick={onAgregar} data-testid="add-to-cart">
       {agregado ? (
         <>
           <IconCheck size={20} /> Agregado
@@ -134,7 +158,10 @@ export function ProductoDetalle({
         </nav>
 
         {producto.marca && <p className="text-sm text-gris-texto">{producto.marca.nombre}</p>}
-        <h1 className="text-3xl font-semibold leading-tight md:text-4xl">{producto.nombre}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-3xl font-semibold leading-tight md:text-4xl">{producto.nombre}</h1>
+          <FavoritoButton productoId={producto.id} className="mt-1 shrink-0" />
+        </div>
         <Price
           precio={producto.precio}
           precioLista={producto.precioLista}

@@ -6,6 +6,10 @@ import { site } from '@/config/site';
 import Link from 'next/link';
 import { LABELS, formatPrecio } from '@/lib/format';
 import { colors } from '@vedere/ui';
+import { AsignacionConfigForm } from '@/components/admin/tienda/AsignacionConfigForm';
+import type { AsignacionConfig } from '@/components/admin/tienda/AsignacionConfigForm';
+import { TiendaConfigForm } from '@/components/admin/tienda/TiendaConfigForm';
+import type { TiendaConfigFiscal } from '@/lib/admin/prompt6';
 
 export const metadata: Metadata = { title: 'Configuración' };
 export const dynamic = 'force-dynamic';
@@ -14,6 +18,10 @@ interface StorageConfig {
   driver: 'r2' | 'local';
   maxUploadMb: number;
   tiposPermitidos: string[];
+}
+
+interface ConfigTiendaRes extends AsignacionConfig, Partial<TiendaConfigFiscal> {
+  entorno: { emails: boolean; adminNotifyEmail: string | null; mpCredenciales: boolean };
 }
 
 interface Health {
@@ -46,20 +54,108 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 export default async function ConfiguracionPage() {
-  const [user, storage, health] = await Promise.all([
+  const [user, storage, health, tienda] = await Promise.all([
     getSession(),
     serverApiOrNull<StorageConfig>('/admin/imagenes/config'),
     serverApiOrNull<Health>('/health'),
+    serverApiOrNull<ConfigTiendaRes>('/admin/config-tienda'),
   ]);
 
   return (
     <>
       <PageHeader
         title="Configuración"
-        description="Estado de la plataforma y dónde se cambia cada cosa. Esta pantalla es de sólo lectura: los valores viven en las variables de entorno de Railway."
+        description="Estado de la plataforma y dónde se cambia cada cosa. Salvo la asignación a ópticas, los valores viven en las variables de entorno de Railway."
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card
+          title="Asignación a ópticas"
+          className="lg:col-span-2"
+          actions={
+            tienda ? (
+              <Badge tone={tienda.entorno.emails ? 'ok' : 'warn'}>
+                {tienda.entorno.emails ? 'Emails por Resend' : 'Emails simulados (sin RESEND_API_KEY)'}
+              </Badge>
+            ) : undefined
+          }
+        >
+          {tienda ? (
+            <>
+              <AsignacionConfigForm
+                inicial={{
+                  plazoAceptacionHoras: tienda.plazoAceptacionHoras,
+                  horaHabilDesde: tienda.horaHabilDesde,
+                  horaHabilHasta: tienda.horaHabilHasta,
+                  sabadoHabil: tienda.sabadoHabil,
+                }}
+                editable={user?.rol === 'ADMIN'}
+              />
+              <p className="mt-4 text-sm text-gris-medio">
+                Al aprobarse un pago, el pedido va a la óptica activa más cercana cuyo radio cubre al cliente y que
+                tenga cupo ese día. Si ninguna lo cubre queda <strong>sin asignar</strong> y se avisa a{' '}
+                {tienda.entorno.adminNotifyEmail ? (
+                  <code className="font-mono text-xs">{tienda.entorno.adminNotifyEmail}</code>
+                ) : (
+                  <>
+                    la casilla de <code className="font-mono text-xs">ADMIN_NOTIFY_EMAIL</code> (sin configurar)
+                  </>
+                )}
+                . Las ópticas y su radio se editan en{' '}
+                <Link href="/admin/opticas" className="underline underline-offset-2">
+                  Ópticas
+                </Link>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gris-medio">No se pudo consultar la configuración de la tienda.</p>
+          )}
+        </Card>
+        <Card
+          title="Datos fiscales y programas"
+          className="lg:col-span-2"
+          actions={
+            tienda ? (
+              <Badge tone={tienda.cuit ? 'ok' : 'warn'}>{tienda.cuit ? 'Datos fiscales cargados' : 'Faltan datos fiscales'}</Badge>
+            ) : undefined
+          }
+        >
+          {tienda ? (
+            <>
+              <TiendaConfigForm
+                inicial={{
+                  razonSocial: tienda.razonSocial ?? null,
+                  cuit: tienda.cuit ?? null,
+                  domicilioFiscal: tienda.domicilioFiscal ?? null,
+                  condicionIva: tienda.condicionIva ?? null,
+                  ingresosBrutos: tienda.ingresosBrutos ?? null,
+                  inicioActividades: tienda.inicioActividades ?? null,
+                  emailContacto: tienda.emailContacto ?? null,
+                  rivedereMeses: tienda.rivedereMeses ?? 24,
+                  rivedereDescuentoPct: tienda.rivedereDescuentoPct ?? 15,
+                  referidoDescuentoPct: tienda.referidoDescuentoPct ?? 10,
+                  carritoAbandonadoHabilitado: tienda.carritoAbandonadoHabilitado ?? true,
+                }}
+                editable={user?.rol === 'ADMIN'}
+              />
+              <p className="mt-4 text-sm text-gris-medio">
+                Los datos fiscales se muestran en el pie de la tienda y de todos los emails. Las plantillas de cada
+                email se editan en{' '}
+                <Link href="/admin/plantillas" className="underline underline-offset-2">
+                  Plantillas de email
+                </Link>{' '}
+                y los textos legales en{' '}
+                <Link href="/admin/legal" className="underline underline-offset-2">
+                  Páginas legales
+                </Link>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gris-medio">No se pudo consultar la configuración de la tienda.</p>
+          )}
+        </Card>
         <Card
           title="Almacenamiento de imágenes"
           actions={

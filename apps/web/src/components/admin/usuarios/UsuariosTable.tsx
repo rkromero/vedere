@@ -48,6 +48,7 @@ interface FormState {
   nombre: string;
   telefono: string;
   rol: Rol;
+  opticaId: string;
   activo: boolean;
   password: string;
 }
@@ -57,6 +58,7 @@ const emptyForm: FormState = {
   nombre: '',
   telefono: '',
   rol: 'CLIENTE',
+  opticaId: '',
   activo: true,
   password: '',
 };
@@ -80,9 +82,12 @@ function useFormErrors() {
 export function UsuariosTable({
   data,
   currentUserId,
+  opticas,
 }: {
   data: Paged<Usuario>;
   currentUserId: string;
+  /** Ópticas socias para vincular usuarios con rol OPTICA. */
+  opticas: Array<{ id: string; nombre: string; activa: boolean }>;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -119,6 +124,7 @@ export function UsuariosTable({
       nombre: u.nombre,
       telefono: u.telefono ?? '',
       rol: u.rol,
+      opticaId: u.opticaId ?? '',
       activo: u.activo,
       password: '',
     });
@@ -132,12 +138,14 @@ export function UsuariosTable({
     setSaving(true);
     try {
       const telefono = form.telefono.trim() || null;
+      const opticaId = form.rol === 'OPTICA' ? form.opticaId || null : null;
       if (modal.mode === 'crear') {
         await api.post('/admin/usuarios', {
           email: form.email,
           nombre: form.nombre,
           telefono,
           rol: form.rol,
+          opticaId,
           activo: form.activo,
           password: form.password,
         });
@@ -147,6 +155,7 @@ export function UsuariosTable({
           nombre: form.nombre,
           telefono,
           rol: form.rol,
+          opticaId,
           activo: form.activo,
         });
         toast.ok('Usuario actualizado');
@@ -245,6 +254,11 @@ export function UsuariosTable({
                 <Td className="text-negro/80">{u.telefono ?? '—'}</Td>
                 <Td>
                   <Badge tone={ROL_TONE[u.rol]}>{LABELS.rol[u.rol]}</Badge>
+                  {u.rol === 'OPTICA' && (
+                    <span className="mt-1 block text-xs text-gris-medio">
+                      {u.optica?.nombre ?? 'Sin óptica vinculada'}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={u.activo ? 'ok' : 'danger'}>
@@ -365,6 +379,24 @@ export function UsuariosTable({
               />
             </div>
           </div>
+          {form.rol === 'OPTICA' && (
+            <Field
+              label="Óptica socia"
+              required
+              error={errors.fieldErrors.opticaId}
+              hint="El usuario sólo ve y opera los pedidos de esta óptica en /optica."
+            >
+              <Select value={form.opticaId} onChange={(e) => set('opticaId', e.target.value)} required>
+                <option value="">Elegí la óptica…</option>
+                {opticas.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                    {o.activa ? '' : ' (pausada)'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {modal?.mode === 'crear' && (
             <Field
               label="Contraseña"

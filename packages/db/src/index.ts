@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 
 export * from '@prisma/client';
+export * from './prompt6.js';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

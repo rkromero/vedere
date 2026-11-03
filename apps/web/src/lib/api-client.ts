@@ -55,7 +55,8 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
     const ok = await tryRefresh();
     if (ok) return request<T>(method, path, body, false);
     if (typeof window !== 'undefined') {
-      window.location.href = `/admin/login?next=${encodeURIComponent(window.location.pathname)}`;
+      const login = window.location.pathname.startsWith('/optica') ? '/optica/login' : '/admin/login';
+      window.location.href = `${login}?next=${encodeURIComponent(window.location.pathname)}`;
     }
   }
 

@@ -15,6 +15,7 @@ import {
 } from '../../schemas/catalogo.js';
 
 const listQuery = paginationQuery.extend(usuarioListQuery.shape);
+const opticaSelect = { optica: { select: { id: true, nombre: true, slug: true } } } as const;
 
 const usuariosRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (request) => {
@@ -33,22 +34,38 @@ const usuariosRoutes: FastifyPluginAsync = async (app) => {
     };
     const [total, users] = await Promise.all([
       prisma.user.count({ where }),
-      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, ...paginate(q) }),
+      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, ...paginate(q), include: opticaSelect }),
     ]);
     return pageResponse(users.map(toPublicUser), total, q);
   });
 
   app.get<{ Params: { id: string } }>('/:id', async (request) => {
-    const user = await prisma.user.findUnique({ where: { id: request.params.id } });
+    const user = await prisma.user.findUnique({ where: { id: request.params.id }, include: opticaSelect });
     if (!user) throw Errors.notFound('Usuario no encontrado');
     return toPublicUser(user);
   });
 
+  /** Rol OPTICA exige una óptica existente; otros roles no llevan óptica. */
+  async function validarOptica(rol: string | undefined, opticaId: string | null | undefined) {
+    if (rol === 'OPTICA') {
+      if (!opticaId) {
+        throw Errors.badRequest('Un usuario OPTICA debe estar vinculado a una óptica', [
+          { path: 'opticaId', message: 'Elegí la óptica' },
+        ]);
+      }
+      const o = await prisma.optica.findUnique({ where: { id: opticaId }, select: { id: true } });
+      if (!o) throw Errors.badRequest('Óptica inexistente', [{ path: 'opticaId', message: 'Elegí una óptica válida' }]);
+      return opticaId;
+    }
+    return null;
+  }
+
   app.post('/', async (request, reply) => {
     const body = parse(usuarioInput, request.body);
     const { password, ...data } = body;
+    const opticaId = await validarOptica(data.rol, data.opticaId);
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-    const user = await prisma.user.create({ data: { ...data, passwordHash } });
+    const user = await prisma.user.create({ data: { ...data, opticaId, passwordHash }, include: opticaSelect });
     return reply.status(201).send(toPublicUser(user));
   });
 
@@ -65,10 +82,19 @@ const usuariosRoutes: FastifyPluginAsync = async (app) => {
       throw Errors.badRequest('No podés desactivar tu propio usuario');
     }
 
-    const user = await prisma.user.update({ where: { id: existing.id }, data: body });
+    const rolFinal = body.rol ?? existing.rol;
+    const opticaId =
+      body.rol !== undefined || body.opticaId !== undefined
+        ? await validarOptica(rolFinal, body.opticaId === undefined ? existing.opticaId : body.opticaId)
+        : undefined;
+    const user = await prisma.user.update({
+      where: { id: existing.id },
+      data: { ...body, ...(opticaId !== undefined ? { opticaId } : {}) },
+      include: opticaSelect,
+    });
 
-    // Si pierde acceso (desactivado o cambia de rol), se cierran sus sesiones.
-    if (body.activo === false || (body.rol && body.rol !== existing.rol)) {
+    // Si pierde acceso (desactivado, cambia de rol o de óptica), se cierran sus sesiones.
+    if (body.activo === false || (body.rol && body.rol !== existing.rol) || (opticaId !== undefined && opticaId !== existing.opticaId)) {
       await prisma.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: new Date() },

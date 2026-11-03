@@ -4,6 +4,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 import { Errors } from '../lib/errors.js';
+import { distanciaKm } from '../lib/geo.js';
 import { paginate, pageResponse, paginationQuery } from '../lib/pagination.js';
 import { dec, productoInclude, serializeProductoPublico } from '../lib/serialize.js';
 import { parse } from '../lib/validate.js';
@@ -12,10 +13,11 @@ import {
   avisoStockInput,
   contactoInput,
   cuponValidar,
-  newsletterInput,
   opticasQuery,
   sugerenciasQuery,
 } from '../schemas/tienda.js';
+import { newsletterAltaInput } from '../schemas/sitio.js';
+import { enviarPlantilla } from '../lib/plantillas.js';
 import { buildTree, categoriaConDescendientes } from './admin/categorias.js';
 
 const listQuery = paginationQuery.extend(catalogoQuery.shape);
@@ -36,18 +38,6 @@ function vigente(now: Date): Prisma.PromoMensajeWhereInput {
     OR: [{ vigenciaDesde: null }, { vigenciaDesde: { lte: now } }],
     AND: [{ OR: [{ vigenciaHasta: null }, { vigenciaHasta: { gte: now } }] }],
   };
-}
-
-/** Distancia aproximada en km entre dos coordenadas (haversine). */
-function distanciaKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 export function serializeOptica<
@@ -412,6 +402,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         tipo: cupon.tipo,
         valor,
         minimoCompra: minimo,
+        acumulable: cupon.acumulable,
       },
       descuento,
     };
@@ -421,12 +412,24 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
   // Newsletter / avisos de stock / contacto
   // ------------------------------------------------------------------
   app.post('/newsletter', formRateLimit, async (request, reply) => {
-    const body = parse(newsletterInput, request.body);
-    await prisma.suscripcionNewsletter.upsert({
+    const body = parse(newsletterAltaInput, request.body);
+    // Prompt 6: guarda el nombre, reactiva si tenía baja y confirma por email (con link de baja) sólo en altas nuevas o reactivaciones.
+    const previa = await prisma.suscripcionNewsletter.findUnique({ where: { email: body.email } });
+    const s = await prisma.suscripcionNewsletter.upsert({
       where: { email: body.email },
-      update: {},
-      create: { email: body.email, origen: body.origen ?? 'web' },
+      update: { bajaEn: null, ...(body.nombre ? { nombre: body.nombre } : {}) },
+      create: { email: body.email, nombre: body.nombre ?? null, origen: body.origen ?? 'web' },
     });
+    if (!previa || previa.bajaEn !== null) {
+      const web = app.env.WEB_URL.replace(/\/$/, '');
+      await enviarPlantilla(app.env, {
+        tipo: 'NEWSLETTER_ALTA',
+        para: s.email,
+        vars: { nombre: s.nombre ?? '', url: `${web}/`, urlBaja: `${web}/newsletter/baja/${s.token}` },
+        ctaHref: `${web}/`,
+        urlBaja: `${web}/newsletter/baja/${s.token}`,
+      });
+    }
     return reply.status(201).send({ ok: true });
   });
 

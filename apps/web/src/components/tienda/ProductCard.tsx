@@ -1,11 +1,13 @@
+'use client';
 // Tarjeta de producto: foto grande (segunda imagen al pasar el mouse), etiquetas, puntos de color,
-// precio y cuotas. Server-friendly: sin estado; el hover es CSS.
+// precio y cuotas (según la línea, desde la configuración comercial). Sin estado; el hover es CSS.
 import Image from 'next/image';
 import Link from 'next/link';
 import { ColorDots, Price, Tag, cn } from '@vedere/ui';
-import { site } from '@/config/site';
+import { useCuotas } from '@/lib/tienda/comercial';
 import type { Producto } from '@/lib/types';
 import { altProducto, imagenesTarjeta, urlProducto, varianteInicial } from '@/lib/tienda/producto';
+import { FavoritoButton } from '@/components/tienda/cuenta/FavoritoButton';
 
 export function ProductCard({
   producto,
@@ -18,6 +20,7 @@ export function ProductCard({
   sizes?: string;
   className?: string;
 }) {
+  const nCuotas = useCuotas(producto.linea);
   const variante = varianteInicial(producto);
   const { principal, segunda } = imagenesTarjeta(producto, variante);
   const agotado = producto.stockTotal <= 0;
@@ -62,6 +65,7 @@ export function ProductCard({
           {agotado && <Tag tone="carey">Sin stock</Tag>}
         </div>
       </Link>
+      <FavoritoButton productoId={producto.id} size="sm" className="absolute right-2 top-2" />
 
       <div className="font-text mt-3 flex flex-col gap-1 px-0.5">
         <div className="flex items-start justify-between gap-2">
@@ -75,7 +79,7 @@ export function ProductCard({
         <Price
           precio={producto.precio}
           precioLista={producto.precioLista}
-          cuotas={site.comercial.cuotas}
+          cuotas={nCuotas}
           size="sm"
         />
       </div>

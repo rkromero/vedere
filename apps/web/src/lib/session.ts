@@ -14,6 +14,8 @@ export interface SessionUser {
   rol: Rol;
   activo: boolean;
   createdAt: string;
+  opticaId?: string | null;
+  optica?: { id: string; nombre: string; slug: string } | null;
 }
 
 export const STAFF_ROLES: Rol[] = ['ADMIN', 'OPERADOR'];
@@ -42,6 +44,22 @@ export async function requireStaff(nextPath = '/admin'): Promise<SessionUser> {
   if (!user || !STAFF_ROLES.includes(user.rol)) {
     redirect(`/admin/login?next=${encodeURIComponent(nextPath)}${user ? '&denied=1' : ''}`);
   }
+  return user;
+}
+
+/** Exige usuario OPTICA con óptica vinculada; redirige al login del panel de ópticas si no. */
+export async function requireOptica(nextPath = '/optica'): Promise<SessionUser> {
+  const user = await getSession();
+  if (!user || user.rol !== 'OPTICA' || !user.opticaId) {
+    redirect(`/optica/login?next=${encodeURIComponent(nextPath)}${user ? '&denied=1' : ''}`);
+  }
+  return user;
+}
+
+/** Exige sesión (cualquier rol) para Mi cuenta; redirige a /ingresar si no hay. */
+export async function requireCliente(nextPath = '/mi-cuenta'): Promise<SessionUser> {
+  const user = await getSession();
+  if (!user) redirect(`/ingresar?next=${encodeURIComponent(nextPath)}`);
   return user;
 }
 

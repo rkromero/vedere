@@ -14,8 +14,10 @@ import {
 import type { ReactNode } from 'react';
 import { site } from '@/config/site';
 import type { Producto, Variante } from '@/lib/types';
+import { track } from '@/lib/analytics';
 import { tiendaApi } from './client';
 import type { CartItem, CuponAplicado } from './types';
+import type { Cotizacion, DescuentoAplicado } from './checkout';
 
 const STORAGE_KEY = 'vedere_carrito_v1';
 const MAX_POR_ITEM = 10;
@@ -93,6 +95,16 @@ export interface CartTotales {
   envioGratis: boolean;
   faltaParaEnvioGratis: number;
   progresoEnvio: number;
+  /** Detalle de descuentos (promos automáticas, cupón) calculado por la API. */
+  descuentos: DescuentoAplicado[];
+  /** Ahorro total (descuentos + diferencia con precio de lista). */
+  ahorro: number;
+  /** Cuotas sin interés para este carrito (según las líneas). */
+  cuotas: { cantidad: number; valorCuota: number } | null;
+  /** Motivo por el que el cupón aplicado no descuenta (no combinable, mínimo, alcance). */
+  cuponError: string | null;
+  /** Si los totales ya vienen de la API (promos aplicadas) o son el cálculo local provisorio. */
+  calculadoEnServidor: boolean;
 }
 
 interface CartContextValue extends CartState {
@@ -108,6 +120,8 @@ interface CartContextValue extends CartState {
   vaciar: () => void;
   totales: CartTotales;
   sincronizado: boolean;
+  /** Última cotización de la API (promos, stock disponible, cuotas). */
+  cotizacion: Cotizacion | null;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -137,6 +151,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { items: [], cupon: null, hidratado: false });
   const [abierto, setAbierto] = useState(false);
   const [sincronizado, setSincronizado] = useState(false);
+  const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
+  const cotizarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logueado = useRef(false);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -190,6 +206,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }, 800);
   }, [state.items, state.cupon, state.hidratado]);
 
+  // 2b) Cotizar en la API (promos automáticas, cupón, cuotas, stock disponible), con debounce.
+  useEffect(() => {
+    if (!state.hidratado) return;
+    if (state.items.length === 0) {
+      setCotizacion(null);
+      return;
+    }
+    if (cotizarTimer.current) clearTimeout(cotizarTimer.current);
+    let cancelado = false;
+    cotizarTimer.current = setTimeout(() => {
+      tiendaApi
+        .post<Cotizacion>('/checkout/cotizar', {
+          items: state.items.map((i) => ({ varianteId: i.varianteId, cantidad: i.cantidad, conReceta: i.conReceta })),
+          cupon: state.cupon?.codigo ?? null,
+          modalidad: 'RETIRO_OPTICA',
+        })
+        .then((c) => {
+          if (!cancelado) setCotizacion(c);
+        })
+        .catch(() => {
+          if (!cancelado) setCotizacion(null);
+        });
+    }, 350);
+    return () => {
+      cancelado = true;
+    };
+  }, [state.items, state.cupon, state.hidratado]);
+
   // 3) Sincronizar entre pestañas.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -224,6 +268,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
       },
     });
     setAbierto(true);
+    track('add_to_cart', {
+      value: producto.precio * Math.max(1, opts.cantidad ?? 1),
+      items: [
+        {
+          item_id: variante.sku,
+          item_name: producto.nombre,
+          item_brand: producto.marca?.nombre,
+          item_category: producto.linea,
+          item_variant: variante.colorArmazon,
+          price: producto.precio,
+          quantity: Math.max(1, opts.cantidad ?? 1),
+        },
+      ],
+    });
   }, []);
 
   const setCantidad = useCallback(
@@ -252,9 +310,37 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const totales = useMemo<CartTotales>(() => {
-    const descuento = calcularDescuento(subtotal, state.cupon);
     const umbral = site.comercial.envioGratisDesde;
+    // La cotización vale si corresponde exactamente a los ítems actuales.
+    const vigente =
+      !!cotizacion &&
+      cotizacion.items.length === state.items.length &&
+      state.items.every((i) => cotizacion.items.some((c) => c.varianteId === i.varianteId && c.cantidad === i.cantidad)) &&
+      (cotizacion.cupon?.codigo ?? null) === (state.cupon?.codigo ?? null);
+    if (vigente && cotizacion) {
+      const t = cotizacion.totales;
+      const neto = t.subtotal - t.descuentoTotal;
+      return {
+        cantidad: state.items.reduce((acc, i) => acc + i.cantidad, 0),
+        subtotal: t.subtotal,
+        descuento: t.descuentoTotal,
+        total: neto,
+        envioGratis: neto >= umbral,
+        faltaParaEnvioGratis: Math.max(0, umbral - neto),
+        progresoEnvio: umbral > 0 ? Math.min(1, neto / umbral) : 1,
+        descuentos: t.descuentos,
+        ahorro: t.ahorroTotal,
+        cuotas: cotizacion.cuotas,
+        cuponError: cotizacion.cuponError,
+        calculadoEnServidor: true,
+      };
+    }
+    const descuento = calcularDescuento(subtotal, state.cupon);
     const total = Math.max(0, subtotal - descuento);
+    const ahorroLista = state.items.reduce(
+      (acc, i) => acc + (i.precioLista && i.precioLista > i.precio ? (i.precioLista - i.precio) * i.cantidad : 0),
+      0,
+    );
     return {
       cantidad: state.items.reduce((acc, i) => acc + i.cantidad, 0),
       subtotal,
@@ -263,8 +349,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       envioGratis: total >= umbral,
       faltaParaEnvioGratis: Math.max(0, umbral - total),
       progresoEnvio: umbral > 0 ? Math.min(1, total / umbral) : 1,
+      descuentos: state.cupon && descuento > 0 ? [{ tipo: 'CUPON', codigo: state.cupon.codigo, descripcion: state.cupon.descripcion ?? `Cupón ${state.cupon.codigo}`, monto: descuento }] : [],
+      ahorro: descuento + ahorroLista,
+      cuotas: null,
+      cuponError: null,
+      calculadoEnServidor: false,
     };
-  }, [state.items, state.cupon, subtotal]);
+  }, [state.items, state.cupon, subtotal, cotizacion]);
 
   const value = useMemo<CartContextValue>(
     () => ({
@@ -281,8 +372,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       vaciar,
       totales,
       sincronizado,
+      cotizacion,
     }),
-    [state, abierto, abrir, cerrar, agregar, setCantidad, quitar, setReceta, aplicarCupon, quitarCupon, vaciar, totales, sincronizado],
+    [state, abierto, abrir, cerrar, agregar, setCantidad, quitar, setReceta, aplicarCupon, quitarCupon, vaciar, totales, sincronizado, cotizacion],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

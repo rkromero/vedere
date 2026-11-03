@@ -5,7 +5,16 @@ import { useRouter } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
 import { Btn, Field, Input } from '@/components/admin/ui';
 
-export function LoginForm({ next }: { next: string }) {
+export function LoginForm({
+  next,
+  roles = ['ADMIN', 'OPERADOR'],
+  mensajeDenegado = 'Tu usuario no tiene acceso al backoffice.',
+}: {
+  next: string;
+  /** Roles que pueden entrar por este formulario (backoffice: ADMIN/OPERADOR; panel de ópticas: OPTICA). */
+  roles?: string[];
+  mensajeDenegado?: string;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,9 +30,9 @@ export function LoginForm({ next }: { next: string }) {
         email,
         password,
       });
-      if (!['ADMIN', 'OPERADOR'].includes(user.rol)) {
+      if (!roles.includes(user.rol)) {
         await api.post('/auth/logout').catch(() => undefined);
-        setError('Tu usuario no tiene acceso al backoffice.');
+        setError(mensajeDenegado);
         return;
       }
       router.push(next);

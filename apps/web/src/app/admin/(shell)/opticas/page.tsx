@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { serverApi, qs } from '@/lib/api-server';
-import type { OpticaAdmin, Paged } from '@/lib/types';
+import type { OpticaAdmin, OpticaMapaItem, Paged } from '@/lib/types';
 import { OpticasTable } from '@/components/admin/tienda/OpticasTable';
 
 export const metadata: Metadata = { title: 'Ópticas socias' };
@@ -12,7 +12,7 @@ export default async function OpticasAdminPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const [data, todas] = await Promise.all([
+  const [data, todas, mapa] = await Promise.all([
     serverApi<Paged<OpticaAdmin>>(
       `/admin/opticas${qs({
         q: sp.q,
@@ -23,9 +23,10 @@ export default async function OpticasAdminPage({
       })}`,
     ),
     serverApi<Paged<OpticaAdmin>>('/admin/opticas?pageSize=100'),
+    serverApi<{ items: OpticaMapaItem[] }>('/admin/opticas/mapa'),
   ]);
   const provincias = Array.from(new Set(todas.items.map((o) => o.provincia))).sort((a, b) =>
     a.localeCompare(b, 'es'),
   );
-  return <OpticasTable data={data} provincias={provincias} />;
+  return <OpticasTable data={data} provincias={provincias} mapa={mapa.items} />;
 }

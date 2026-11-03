@@ -13,6 +13,11 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
       colecciones,
       usuarios,
       bajoStock,
+      pedidosPorEstado,
+      sinAsignar,
+      vencidos,
+      solicitudesPendientes,
+      opticasActivas,
     ] = await Promise.all([
       prisma.producto.count(),
       prisma.producto.count({ where: { estado: 'PUBLICADO' } }),
@@ -42,6 +47,11 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
           WHERE v.activa = true AND v.stock < v.stock_minimo AND p.estado <> 'ARCHIVADO'
           ORDER BY (v.stock_minimo - v.stock) DESC, p.nombre ASC
           LIMIT 50`,
+      prisma.pedido.groupBy({ by: ['estado'], _count: { _all: true } }),
+      prisma.pedido.count({ where: { estado: 'PAGADO', opticaId: null } }),
+      prisma.pedido.count({ where: { estado: 'ASIGNADO', aceptarAntesDe: { lt: new Date() } } }),
+      prisma.solicitudCambio.count({ where: { estado: 'PENDIENTE' } }),
+      prisma.optica.count({ where: { activa: true } }),
     ]);
 
     return {
@@ -50,6 +60,13 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
       categorias,
       colecciones,
       usuarios,
+      pedidos: {
+        porEstado: Object.fromEntries(pedidosPorEstado.map((r) => [r.estado, r._count._all])),
+        sinAsignar,
+        vencidos,
+        solicitudesPendientes,
+      },
+      opticasActivas,
       variantesBajoStock: bajoStock.map((r) => ({
         id: r.id,
         sku: r.sku,

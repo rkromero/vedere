@@ -120,9 +120,14 @@ describe.skipIf(!hasDb)('usuarios (integración)', () => {
     });
     expect(refreshAntes).toBeGreaterThanOrEqual(1);
 
-    const rol = await put(`/admin/usuarios/${nuevoId}`, { rol: 'OPTICA' });
+    const optica = await prisma.optica.upsert({
+      where: { slug: 'optica-usuarios' },
+      update: {},
+      create: { nombre: 'Óptica Usuarios', slug: 'optica-usuarios', direccion: 'Calle 1', localidad: 'CABA', provincia: 'Buenos Aires', codigoPostal: '1425' },
+    });
+    const rol = await put(`/admin/usuarios/${nuevoId}`, { rol: 'OPTICA', opticaId: optica.id });
     expect(rol.statusCode).toBe(200);
-    expect(rol.json().rol).toBe('OPTICA');
+    expect(rol.json()).toMatchObject({ rol: 'OPTICA', opticaId: optica.id });
     const refreshDespues = await prisma.refreshToken.count({
       where: { userId: nuevoId, revokedAt: null },
     });

@@ -41,12 +41,16 @@ export default async function DashboardPage() {
   ]);
   const esAdmin = user?.rol === 'ADMIN';
   const bajoStock = data?.variantesBajoStock ?? [];
+  const ped = data?.pedidos;
+  const enCurso = ped
+    ? (ped.porEstado.ASIGNADO ?? 0) + (ped.porEstado.ACEPTADO ?? 0) + (ped.porEstado.EN_ARMADO ?? 0) + (ped.porEstado.LISTO ?? 0) + (ped.porEstado.ENVIADO ?? 0)
+    : 0;
 
   return (
     <>
       <PageHeader
         title={`Hola, ${user?.nombre ?? 'equipo'}`}
-        description="Resumen del catálogo y alertas de stock."
+        description="Pedidos en curso, alertas de asignación y resumen del catálogo."
         actions={
           <>
             <LinkBtn href="/admin/productos/nuevo">Nuevo producto</LinkBtn>
@@ -67,6 +71,15 @@ export default async function DashboardPage() {
         />
       ) : (
         <>
+          {ped && (
+            <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+              <Stat label="Pendientes de pago" value={ped.porEstado.PENDIENTE_PAGO ?? 0} href="/admin/pedidos?estado=PENDIENTE_PAGO" hint="Transferencias a confirmar" />
+              <Stat label="Sin asignar" value={ped.sinAsignar} href="/admin/pedidos?opticaId=sin" hint="Ninguna óptica los cubre" />
+              <Stat label="Plazo vencido" value={ped.vencidos} href="/admin/pedidos?estado=ASIGNADO" hint="La óptica no respondió" />
+              <Stat label="En curso" value={enCurso} href="/admin/pedidos" hint={`${data.opticasActivas} ópticas activas`} />
+              <Stat label="Cambios y devoluciones" value={ped.solicitudesPendientes} href="/admin/solicitudes?estado=PENDIENTE" hint="Solicitudes pendientes" />
+            </div>
+          )}
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat
               label="Productos"

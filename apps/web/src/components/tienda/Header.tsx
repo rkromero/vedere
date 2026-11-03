@@ -26,7 +26,7 @@ export function Header() {
         <div className="ml-auto flex items-center gap-1">
           <SearchButton />
           <Link
-            href="/cuenta"
+            href="/mi-cuenta"
             aria-label="Mi cuenta"
             className="hidden h-11 w-11 items-center justify-center rounded-full text-negro hover:bg-negro/5 md:inline-flex"
           >

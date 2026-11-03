@@ -118,6 +118,9 @@ export interface Usuario {
   telefono: string | null;
   rol: Rol;
   activo: boolean;
+  /** Sólo rol OPTICA: óptica a la que pertenece. */
+  opticaId?: string | null;
+  optica?: { id: string; nombre: string; slug: string } | null;
   createdAt: string;
 }
 
@@ -127,6 +130,13 @@ export interface Dashboard {
   categorias: number;
   colecciones: number;
   usuarios: number;
+  pedidos: {
+    porEstado: Partial<Record<string, number>>;
+    sinAsignar: number;
+    vencidos: number;
+    solicitudesPendientes: number;
+  };
+  opticasActivas: number;
   variantesBajoStock: Array<{
     id: string;
     sku: string;
@@ -175,8 +185,34 @@ export interface OpticaAdmin {
   horarios: string | null;
   activa: boolean;
   orden: number;
+  // Prompt 5: datos fiscales, cobertura y operación
+  razonSocial: string | null;
+  cuit: string | null;
+  radioKm: number;
+  opticoResponsable: string | null;
+  matricula: string | null;
+  comisionPct: number;
+  capacidadDiaria: number;
+  /** Pedidos asignados hoy (lo calcula la API en el listado). */
+  asignadosHoy?: number;
+  usuarios?: number;
+  pedidos?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OpticaMapaItem {
+  id: string;
+  nombre: string;
+  slug: string;
+  direccion: string;
+  localidad: string;
+  provincia: string;
+  lat: number;
+  lng: number;
+  radioKm: number;
+  activa: boolean;
+  capacidadDiaria: number;
 }
 
 export type TipoCupon = 'PORCENTAJE' | 'MONTO';
