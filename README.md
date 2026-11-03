@@ -2,7 +2,7 @@
 
 E-commerce de anteojos (sol, recetados, multifocales y accesorios) de Argentina. El cliente compra online y el pedido lo arma, entrega y ajusta la **óptica socia más cercana** a su domicilio.
 
-> Estado: **prompt 2 de 6** — catálogo y backoffice con ABM completos (sobre la base e infraestructura del prompt 1).
+> Estado: **prompt 3 de 6** — tienda pública (home, listados con filtros, ficha, buscador, carrito, ópticas e institucionales) sobre el catálogo y backoffice del prompt 2. Falta: checkout y pagos (prompt 4).
 
 ## Stack
 
@@ -136,9 +136,15 @@ Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usua
 
 | Ruta                                                                 | Descripción                                                                                                                                                                                                                                                         |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /catalogo/productos`                                            | Filtros: `q`, `categoria` (slug, incluye hijas), `linea`, `forma`, `color`, `material`, `genero`, `marca`, `coleccion`, `precioMin`, `precioMax`, `destacado`. Orden: `orden=mas_vendidos \| novedades \| precio_asc \| precio_desc`. Paginación `page`, `pageSize` |
-| `GET /catalogo/productos/:slug`                                      | Detalle (404 si no está publicado)                                                                                                                                                                                                                                  |
-| `GET /catalogo/categorias` · `/marcas` · `/colecciones` · `/filtros` | Árbol de categorías, marcas, colecciones vigentes y valores disponibles para filtros                                                                                                                                                                                |
+| `GET /catalogo/productos` | Filtros (admiten listas separadas por coma): `q`, `categoria` (slug, incluye hijas), `linea`, `forma`, `color`, `material`, `genero`, `marca`, `coleccion`, `slugs`, `precioMin`, `precioMax`, `destacado`, `receta`. Orden: `orden=relevancia \| mas_vendidos \| novedades \| precio_asc \| precio_desc`. Paginación `page`, `pageSize` |
+| `GET /catalogo/productos/:slug` · `/:slug/relacionados` | Detalle (404 si no está publicado) y relacionados (misma colección > forma > línea) |
+| `GET /catalogo/sugerencias?q=` | Sugerencias en vivo para el buscador: productos, categorías y colecciones |
+| `GET /catalogo/categorias` · `/marcas` · `/colecciones` · `/filtros` | Árbol de categorías, marcas, colecciones vigentes (con portada y cantidad) y valores disponibles para filtros |
+| `GET /catalogo/promos` | Mensajes activos y vigentes de la barra de promo |
+| `GET /catalogo/opticas` · `/opticas/:slug` | Ópticas socias activas; `cp` ordena por cercanía de código postal, `lat`/`lng` por distancia en km, `q` busca |
+| `POST /catalogo/cupones/validar` | `{ codigo, subtotal }` → `{ valido, cupon, descuento }` (404 inexistente, 400 vencido/agotado/mínimo) |
+| `POST /catalogo/newsletter` · `/avisos-stock` · `/contacto` | Formularios públicos (rate limit 12/min; `contacto` tiene honeypot `web`) |
+| `GET/PUT/DELETE /carrito` | Carrito del usuario logueado (se sincroniza con el de localStorage) |
 
 - Las rutas `PUT` aceptan cuerpos parciales: sólo cambian los campos enviados (los defaults del alta no se reaplican).
 - Cookies: `vedere_access` (JWT, `ACCESS_TOKEN_TTL`, path `/`) y `vedere_refresh` (opaco, `REFRESH_TOKEN_TTL_DAYS`, path `/auth`). Ambas `httpOnly`.
@@ -151,7 +157,14 @@ Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usua
 La web expone un proxy same-origin `/api/*` hacia la API, así las cookies de sesión quedan en el dominio de la web (SameSite=Lax) y los server components pueden leerlas. Un middleware renueva el access token con el refresh token cuando vence.
 
 - Login en `/admin/login` (sólo ADMIN y OPERADOR).
-- Menú lateral: Dashboard (métricas + alerta de stock bajo el mínimo), Productos (tabla con búsqueda, filtros, paginación, acciones masivas, exportar/importar CSV; formulario con pestañas Datos / Variantes y stock / Imágenes con arrastrar para ordenar / SEO), Categorías (árbol), Marcas, Colecciones, Usuarios (sólo ADMIN: crear, editar, desactivar, cambiar rol, resetear contraseña), Pedidos (vacío hasta el prompt de checkout), Configuración (sólo lectura).
+- Menú lateral: Dashboard (métricas + alerta de stock bajo el mínimo), Productos (tabla con búsqueda, filtros, paginación, acciones masivas, exportar/importar CSV; formulario con pestañas Datos / Variantes y stock / Imágenes con arrastrar para ordenar / SEO), Categorías (árbol), Marcas, Colecciones, Usuarios (sólo ADMIN: crear, editar, desactivar, cambiar rol, resetear contraseña), Pedidos (vacío hasta el prompt de checkout), Barra de promo (mensajes rotativos), Ópticas (red de ópticas socias con coordenadas para el mapa), Cupones, Mensajes (contacto, avisos de stock y newsletter), Configuración (sólo lectura).
+
+## Tienda pública
+
+- Rutas: `/` (home), `/sol` `/recetados` `/multifocales` `/accesorios` `/novedades` `/mas-vendidos`, `/coleccion/[slug]`, `/categoria/[slug]`, `/buscar?q=`, `/p/[slug]?v=[varianteId]` (ficha), `/opticas` (mapa Leaflet + listado + buscador por CP), `/faq`, `/cambios-y-devoluciones`, `/contacto`, `/como-funciona`, `/envios`, `/nosotros`, `/legal/{terminos,privacidad,arrepentimiento}`, `/checkout` (placeholder hasta el prompt 4), más `sitemap.xml` y `robots.txt`.
+- Catálogo con Server Components y caché (`revalidate` 60 s en home/listados/ficha, 300 s en ópticas). Filtros y orden viven en la URL (compartibles); scroll infinito con `?page=` en `replaceState`.
+- Carrito en `localStorage` (`vedere_carrito_v1`); si hay sesión (`/api/auth/me`), se mezcla con `/carrito` y se sincroniza con un `PUT` debounced. Vistos recientemente en `vedere_recientes_v1`.
+- Componentes compartidos y accesibles en `packages/ui` (Drawer con `<dialog>` nativo, botones de 44 px, foco visible, contraste AA).
 
 ## Tests
 
@@ -201,7 +214,11 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 | `NEXT_PUBLIC_SITE_URL`                                                          | URL pública de la web                       |
 | `NEXT_PUBLIC_API_URL`                                                           | URL pública de la API                       |
 | `API_URL`                                                                       | URL de la API para el servidor Next (proxy) |
-| `NEXT_PUBLIC_PROMO_ENABLED`, `NEXT_PUBLIC_PROMO_TEXT`, `NEXT_PUBLIC_PROMO_LINK` | barra de promo                              |
+| `NEXT_PUBLIC_PROMO_ENABLED`, `NEXT_PUBLIC_PROMO_TEXT`, `NEXT_PUBLIC_PROMO_LINK` | barra de promo de respaldo (los mensajes se cargan en `/admin/promos`) |
+| `NEXT_PUBLIC_WHATSAPP` | número con código de país para el botón flotante y los CTA (vacío = se ocultan) |
+| `NEXT_PUBLIC_CUOTAS`, `NEXT_PUBLIC_ENVIO_GRATIS_DESDE` | cuotas sin interés (6) y umbral de envío gratis (80000) |
+| `NEXT_PUBLIC_INSTAGRAM`, `NEXT_PUBLIC_EMAIL_CONTACTO` | enlaces del footer y contacto |
+| `NEXT_PUBLIC_COLAB_TITULO`, `NEXT_PUBLIC_COLAB_TEXTO`, `NEXT_PUBLIC_COLAB_LINK`, `NEXT_PUBLIC_COLAB_CTA` | banner de colaboración de la home (opcionales) |
 
 Las `NEXT_PUBLIC_*` se inyectan en **build time** (Railway las pasa como build args al Dockerfile): al cambiarlas hay que redeployar la web.
 
@@ -209,8 +226,10 @@ Las `NEXT_PUBLIC_*` se inyectan en **build time** (Railway las pasa como build a
 
 ```bash
 railway ssh --service api -- sh -c "cd /app && pnpm --filter @vedere/db exec tsx prisma/seed.ts"
-# sólo admin, sin catálogo de ejemplo:
+# sólo admin + datos de tienda (promos, ópticas socias, cupones), sin tocar el catálogo:
 railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
+# sólo admin:
+railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false SEED_TIENDA=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
 ```
 
 ## Flujo de trabajo con Git

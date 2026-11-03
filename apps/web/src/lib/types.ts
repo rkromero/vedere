@@ -95,6 +95,9 @@ export interface Producto {
   precioLista: number | null;
   permiteReceta: boolean;
   destacado: boolean;
+  edicionLimitada: boolean;
+  /** Publicado hace menos de 45 días (lo calcula la API). */
+  nuevo: boolean;
   estado: EstadoProducto;
   seo: { title: string | null; description: string | null };
   vendidos: number;
@@ -141,4 +144,89 @@ export interface Paged<T> {
   pageSize: number;
   total: number;
   totalPages: number;
+}
+
+// ---------- Tienda (admin) ----------
+export interface PromoMensajeAdmin {
+  id: string;
+  texto: string;
+  link: string | null;
+  orden: number;
+  activo: boolean;
+  vigenciaDesde: string | null;
+  vigenciaHasta: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpticaAdmin {
+  id: string;
+  nombre: string;
+  slug: string;
+  direccion: string;
+  localidad: string;
+  provincia: string;
+  codigoPostal: string;
+  lat: number | null;
+  lng: number | null;
+  telefono: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  horarios: string | null;
+  activa: boolean;
+  orden: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TipoCupon = 'PORCENTAJE' | 'MONTO';
+export interface Cupon {
+  id: string;
+  codigo: string;
+  descripcion: string | null;
+  tipo: TipoCupon;
+  valor: number;
+  minimoCompra: number | null;
+  usosMax: number | null;
+  usos: number;
+  activo: boolean;
+  vigenciaDesde: string | null;
+  vigenciaHasta: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MotivoContacto = 'CONSULTA' | 'TURNO' | 'CAMBIO' | 'ARREPENTIMIENTO' | 'OPTICA' | 'OTRO';
+export interface MensajeContacto {
+  id: string;
+  nombre: string;
+  email: string;
+  telefono: string | null;
+  motivo: MotivoContacto;
+  mensaje: string;
+  pedido: string | null;
+  leidoEn: string | null;
+  createdAt: string;
+}
+
+export interface AvisoStock {
+  id: string;
+  email: string;
+  varianteId: string;
+  notificadoEn: string | null;
+  createdAt: string;
+  variante: {
+    id: string;
+    sku: string;
+    colorArmazon: string;
+    stock: number;
+    producto: { id: string; nombre: string; slug: string };
+  };
+}
+
+export interface SuscripcionNewsletter {
+  id: string;
+  email: string;
+  origen: string | null;
+  createdAt: string;
 }

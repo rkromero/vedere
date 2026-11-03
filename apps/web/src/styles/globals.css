@@ -12,6 +12,8 @@
   --color-blanco: #ffffff;
   --color-gris-claro: #f2f2f0;
   --color-gris-medio: #8a8a86;
+  /* Texto secundario con contraste AA sobre blanco y gris claro */
+  --color-gris-texto: #5f5f5b;
 
   /* Colección */
   --color-sol: #f2b33d;
@@ -26,6 +28,28 @@
   /* Ejes variables */
   --font-width-campaign: 62;
   --font-width-text: 100;
+
+  --animate-drawer-in: drawer-in 0.22s ease-out;
+  --animate-fade-in: fade-in 0.25s ease-out;
+
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {
@@ -34,10 +58,12 @@
     font-variation-settings: 'wdth' 100;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
   }
 
   body {
     @apply bg-blanco text-negro;
+    overflow-x: clip;
   }
 
   /* Títulos y texto: wdth 100, pesos 400 a 600 */
@@ -47,6 +73,31 @@
   h4 {
     font-variation-settings: 'wdth' 100;
     font-weight: 600;
+  }
+
+  /* Foco visible consistente en toda la tienda (teclado) */
+  :focus-visible {
+    outline: 2px solid var(--color-noche);
+    outline-offset: 2px;
+  }
+
+  /* <dialog> del Drawer: sin estilos de agente */
+  dialog {
+    max-height: 100dvh;
+    color: inherit;
+  }
+  dialog::backdrop {
+    background: rgb(10 10 10 / 0.5);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -68,4 +119,34 @@
   font-stretch: 100%;
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* Carrusel horizontal con scroll-snap y sin barra visible */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Imagen de producto: fondo gris claro y mezcla para fotos con fondo blanco */
+@utility img-producto {
+  background-color: var(--color-gris-claro);
+  object-fit: cover;
+}
+
+/* Leaflet: controles con área táctil de 44 px y tipografía del sitio. */
+.leaflet-container {
+  font-family: inherit;
+}
+.leaflet-touch .leaflet-bar a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+}
+
+/* Red de seguridad fuera de capas: un <dialog> cerrado nunca se muestra, aunque una utilidad
+   de display (flex, grid) esté en su className. */
+dialog:not([open]) {
+  display: none;
 }

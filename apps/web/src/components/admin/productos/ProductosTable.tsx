@@ -319,6 +319,7 @@ export function ProductosTable({
                     <div className="flex items-center gap-2 text-xs text-gris-medio">
                       <span>{p.slug}</span>
                       {p.destacado && <Badge tone="info">Destacado</Badge>}
+                      {p.edicionLimitada && <Badge tone="warn">Ed. limitada</Badge>}
                     </div>
                   </Td>
                   <Td>{p.marca?.nombre ?? <span className="text-gris-medio">—</span>}</Td>

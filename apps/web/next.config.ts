@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   output: process.env.NEXT_STANDALONE === '1' ? 'standalone' : undefined,
   outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@vedere/ui'],
+  // Metadata bloqueante (siempre en <head>) para todos los user agents: generateMetadata usa el
+  // mismo fetch cacheado que la página, así que no cuesta nada y Lighthouse/scrapers la ven sin JS.
+  htmlLimitedBots: /.+/,
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
   },

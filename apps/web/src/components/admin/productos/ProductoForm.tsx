@@ -530,12 +530,22 @@ export function ProductoForm({
                   checked={state.permiteReceta}
                   onChange={(e) => patch({ permiteReceta: e.target.checked })}
                 />
+                <Checkbox
+                  label="Edición limitada (etiqueta en la tienda)"
+                  checked={state.edicionLimitada}
+                  onChange={(e) => patch({ edicionLimitada: e.target.checked })}
+                />
                 {esEdicion && producto.estado === 'PUBLICADO' && (
                   <p className="rounded-lg bg-gris-claro px-3 py-2 text-xs text-negro/80">
-                    Ver en tienda: <span className="font-mono">/p/{producto.slug}</span>
-                    <span className="block text-gris-medio">
-                      La tienda pública llega en un próximo paso.
-                    </span>
+                    Ver en tienda:{' '}
+                    <a
+                      href={`/p/${producto.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono underline underline-offset-2"
+                    >
+                      /p/{producto.slug}
+                    </a>
                   </p>
                 )}
               </div>

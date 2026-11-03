@@ -35,6 +35,7 @@ export interface ProductoFormState {
   precioLista: string;
   permiteReceta: boolean;
   destacado: boolean;
+  edicionLimitada: boolean;
   estado: EstadoProducto;
   seoTitle: string;
   seoDescription: string;
@@ -106,6 +107,7 @@ export function estadoInicial(p?: Producto | null): ProductoFormState {
       precioLista: '',
       permiteReceta: false,
       destacado: false,
+      edicionLimitada: false,
       estado: 'BORRADOR',
       seoTitle: '',
       seoDescription: '',
@@ -131,6 +133,7 @@ export function estadoInicial(p?: Producto | null): ProductoFormState {
     precioLista: p.precioLista?.toString() ?? '',
     permiteReceta: p.permiteReceta,
     destacado: p.destacado,
+    edicionLimitada: p.edicionLimitada,
     estado: p.estado,
     seoTitle: p.seo.title ?? '',
     seoDescription: p.seo.description ?? '',
@@ -160,6 +163,7 @@ export function productoPayload(s: ProductoFormState) {
     precioLista: s.precioLista.trim() === '' ? null : Number(s.precioLista),
     permiteReceta: s.permiteReceta,
     destacado: s.destacado,
+    edicionLimitada: s.edicionLimitada,
     estado: s.estado,
     seoTitle: strOrNull(s.seoTitle),
     seoDescription: strOrNull(s.seoDescription),

@@ -10,6 +10,13 @@ export function dec(v: DecimalLike): number | null {
   return v.toNumber();
 }
 
+/** "Nuevo" durante los primeros 45 días desde la publicación. */
+const DIAS_NUEVO = 45;
+export function esNuevo(publicadoEn: Date | null): boolean {
+  if (!publicadoEn) return false;
+  return Date.now() - publicadoEn.getTime() < DIAS_NUEVO * 24 * 60 * 60 * 1000;
+}
+
 export const productoInclude = {
   marca: { select: { id: true, nombre: true, slug: true, logoUrl: true } },
   coleccion: { select: { id: true, nombre: true, slug: true, colorHex: true } },
@@ -73,6 +80,8 @@ export function serializeProducto(p: ProductoFull) {
     precioLista: dec(p.precioLista),
     permiteReceta: p.permiteReceta,
     destacado: p.destacado,
+    edicionLimitada: p.edicionLimitada,
+    nuevo: esNuevo(p.publicadoEn),
     estado: p.estado,
     seo: { title: p.seoTitle, description: p.seoDescription },
     vendidos: p.vendidos,

@@ -4,6 +4,8 @@ export const colors = {
   blanco: '#FFFFFF',
   grisClaro: '#F2F2F0',
   grisMedio: '#8A8A86',
+  /** Gris para texto secundario: contraste AA (≥ 4.5:1) sobre blanco y gris claro. */
+  grisTexto: '#5F5F5B',
   // Colección
   sol: '#F2B33D',
   vetro: '#7FD1C1',
@@ -20,3 +22,6 @@ export const typography = {
   /** Títulos y texto: wdth 100, pesos 400 a 600. */
   text: { wdth: 100, wghtMin: 400, wghtMax: 600 },
 } as const;
+
+/** Breakpoints de referencia (coinciden con Tailwind). Mobile first. */
+export const breakpoints = { sm: 640, md: 768, lg: 1024, xl: 1280 } as const;

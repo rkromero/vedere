@@ -1,4 +1,5 @@
-// Seed: usuario ADMIN (desde env) + catálogo base (categorías, marcas, colecciones y 12 productos de ejemplo).
+// Seed: usuario ADMIN (desde env) + catálogo base (categorías, marcas, colecciones y 12 productos de ejemplo)
+// + datos de tienda (promos, ópticas socias de ejemplo y cupones).
 // Idempotente: usa upsert por slug / sku / email. Nunca hardcodear credenciales acá.
 import { PrismaClient, Rol } from '@prisma/client';
 import type { EstadoProducto, Forma, Genero, Linea, Material, TipoImagen } from '@prisma/client';
@@ -77,6 +78,7 @@ interface SeedProducto {
   precioLista?: number;
   permiteReceta: boolean;
   destacado?: boolean;
+  edicionLimitada?: boolean;
   estado?: EstadoProducto;
   vendidos?: number;
   variantes: SeedVariante[];
@@ -179,6 +181,7 @@ const PRODUCTOS: SeedProducto[] = [
   {
     nombre: 'Ojo de Gato Recoleta',
     slug: 'ojo-de-gato-recoleta',
+    edicionLimitada: true,
     descripcion: 'Silueta ojo de gato en acetato brillante. Lentes con filtro UV400.',
     marca: 'vedere',
     categorias: ['sol'],
@@ -585,6 +588,7 @@ async function seedCatalogo(adminId: string) {
       precioLista: p.precioLista ?? null,
       permiteReceta: p.permiteReceta,
       destacado: p.destacado ?? false,
+      edicionLimitada: p.edicionLimitada ?? false,
       estado,
       vendidos: p.vendidos ?? 0,
       seoTitle: `${p.nombre} | Vedere`,
@@ -648,11 +652,81 @@ async function seedCatalogo(adminId: string) {
   );
 }
 
+
+// ---------- Tienda (prompt 3): promos, ópticas socias y cupones ----------
+
+const PROMOS = [
+  { texto: 'Envío gratis en compras desde $80.000', link: '/envios', orden: 0 },
+  { texto: '6 cuotas sin interés con tarjetas bancarias', link: null, orden: 1 },
+  { texto: 'Comprás online. Te los ajustan en tu óptica más cercana', link: '/opticas', orden: 2 },
+];
+
+// Ópticas de ejemplo (nombres ficticios) con coordenadas aproximadas para el mapa.
+const OPTICAS = [
+  { nombre: 'Óptica Mirada Palermo', direccion: 'Av. Santa Fe 4120', localidad: 'Palermo, CABA', provincia: 'Buenos Aires', codigoPostal: '1425', lat: -34.5846, lng: -58.4216, whatsapp: '5491150000001', horarios: 'Lun a vie 10 a 19 · Sáb 10 a 14' },
+  { nombre: 'Óptica Mirada Recoleta', direccion: 'Av. Callao 1580', localidad: 'Recoleta, CABA', provincia: 'Buenos Aires', codigoPostal: '1024', lat: -34.5913, lng: -58.3921, whatsapp: '5491150000002', horarios: 'Lun a vie 9 a 19' },
+  { nombre: 'Visión Belgrano', direccion: 'Av. Cabildo 2240', localidad: 'Belgrano, CABA', provincia: 'Buenos Aires', codigoPostal: '1428', lat: -34.5615, lng: -58.4567, whatsapp: '5491150000003', horarios: 'Lun a sáb 10 a 20' },
+  { nombre: 'Óptica Caballito Centro', direccion: 'Av. Rivadavia 5020', localidad: 'Caballito, CABA', provincia: 'Buenos Aires', codigoPostal: '1424', lat: -34.6183, lng: -58.4342, whatsapp: '5491150000004', horarios: 'Lun a vie 9.30 a 19' },
+  { nombre: 'Óptica San Isidro Norte', direccion: 'Av. Centenario 980', localidad: 'San Isidro', provincia: 'Buenos Aires', codigoPostal: '1642', lat: -34.4712, lng: -58.5277, whatsapp: '5491150000005', horarios: 'Lun a vie 9 a 18 · Sáb 9 a 13' },
+  { nombre: 'Lomas Visión', direccion: 'Laprida 340', localidad: 'Lomas de Zamora', provincia: 'Buenos Aires', codigoPostal: '1832', lat: -34.7608, lng: -58.4008, whatsapp: '5491150000006', horarios: 'Lun a sáb 9 a 19' },
+  { nombre: 'Óptica Oeste Morón', direccion: 'Brown 760', localidad: 'Morón', provincia: 'Buenos Aires', codigoPostal: '1708', lat: -34.6503, lng: -58.6195, whatsapp: '5491150000007', horarios: 'Lun a vie 9 a 18' },
+  { nombre: 'Óptica Diagonal 74', direccion: 'Calle 8 n.º 1150', localidad: 'La Plata', provincia: 'Buenos Aires', codigoPostal: '1900', lat: -34.9214, lng: -57.9544, whatsapp: '5492210000008', horarios: 'Lun a vie 9 a 18 · Sáb 9 a 13' },
+  { nombre: 'Óptica Costa Mar del Plata', direccion: 'Av. Independencia 2320', localidad: 'Mar del Plata', provincia: 'Buenos Aires', codigoPostal: '7600', lat: -38.0055, lng: -57.5426, whatsapp: '5492230000009', horarios: 'Lun a sáb 9 a 20' },
+  { nombre: 'Óptica Pellegrini', direccion: 'Córdoba 1450', localidad: 'Rosario', provincia: 'Santa Fe', codigoPostal: '2000', lat: -32.9468, lng: -60.6393, whatsapp: '5493410000010', horarios: 'Lun a vie 9 a 19 · Sáb 9 a 13' },
+  { nombre: 'Óptica Nueva Córdoba', direccion: 'Bv. Illia 320', localidad: 'Córdoba', provincia: 'Córdoba', codigoPostal: '5000', lat: -31.4245, lng: -64.1851, whatsapp: '5493510000011', horarios: 'Lun a vie 9 a 19' },
+  { nombre: 'Óptica Andina', direccion: 'Av. San Martín 1180', localidad: 'Mendoza', provincia: 'Mendoza', codigoPostal: '5500', lat: -32.8908, lng: -68.8272, whatsapp: '5492610000012', horarios: 'Lun a vie 9 a 13 y 17 a 21' },
+  { nombre: 'Óptica del Norte', direccion: '25 de Mayo 450', localidad: 'San Miguel de Tucumán', provincia: 'Tucumán', codigoPostal: '4000', lat: -26.8241, lng: -65.2043, whatsapp: '5493810000013', horarios: 'Lun a vie 9 a 13 y 17 a 21' },
+];
+
+const CUPONES = [
+  { codigo: 'BIENVENIDA10', descripcion: '10 % en tu primera compra', tipo: 'PORCENTAJE' as const, valor: 10 },
+  { codigo: 'VEDERE5000', descripcion: '$5.000 de descuento en compras desde $60.000', tipo: 'MONTO' as const, valor: 5000, minimoCompra: 60000 },
+];
+
+const slugify = (input: string) =>
+  input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+async function seedTienda(adminId: string) {
+  const audit = { createdById: adminId, updatedById: adminId };
+
+  const promosExistentes = await prisma.promoMensaje.count();
+  if (promosExistentes === 0) {
+    await prisma.promoMensaje.createMany({
+      data: PROMOS.map((p) => ({ ...p, activo: true, ...audit })),
+    });
+  }
+
+  for (const o of OPTICAS) {
+    const slug = slugify(o.nombre);
+    await prisma.optica.upsert({
+      where: { slug },
+      update: { ...o, activa: true, updatedById: adminId },
+      create: { ...o, slug, activa: true, ...audit },
+    });
+  }
+
+  for (const c of CUPONES) {
+    await prisma.cupon.upsert({
+      where: { codigo: c.codigo },
+      update: { ...c, activo: true, updatedById: adminId },
+      create: { ...c, activo: true, ...audit },
+    });
+  }
+  console.log(
+    '[seed] Tienda: ' + PROMOS.length + ' promos, ' + OPTICAS.length + ' ópticas socias, ' + CUPONES.length + ' cupones',
+  );
+}
+
 async function main() {
   const admin = await seedAdmin();
-  if (process.env.SEED_CATALOGO !== 'false') {
-    await seedCatalogo(admin.id);
-  }
+  if (process.env.SEED_CATALOGO !== 'false') await seedCatalogo(admin.id);
+  // Promos, ópticas socias y cupones: idempotente, se puede correr solo con SEED_CATALOGO=false.
+  if (process.env.SEED_TIENDA !== 'false') await seedTienda(admin.id);
 }
 
 main()

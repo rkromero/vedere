@@ -5,7 +5,7 @@ import { site } from '@/config/site';
 
 // Archivo variable con ejes wdth (62–125) y wght (100–900).
 const archivo = Archivo({
-  subsets: ['latin', 'latin-ext'],
+  subsets: ['latin'],
   axes: ['wdth'],
   display: 'swap',
   variable: '--font-archivo',
