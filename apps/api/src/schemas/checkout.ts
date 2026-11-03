@@ -352,4 +352,29 @@ export const configTiendaUpdate = z.object({
   horaHabilDesde: z.number().int().min(0).max(22).optional(),
   horaHabilHasta: z.number().int().min(1).max(23).optional(),
   sabadoHabil: z.boolean().optional(),
+  // Prompt 6: datos fiscales (footer y emails), Plan Rivedere, referidos y carrito abandonado.
+  razonSocial: nullableStr(160),
+  cuit: z
+    .string()
+    .trim()
+    .regex(/^\d{2}-?\d{8}-?\d$/, 'CUIT inválido (11 dígitos, ej. 30-12345678-9)')
+    .nullable()
+    .optional()
+    .or(z.literal('').transform(() => null)),
+  domicilioFiscal: nullableStr(300),
+  condicionIva: nullableStr(80),
+  ingresosBrutos: nullableStr(80),
+  inicioActividades: nullableStr(40),
+  emailContacto: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email({ error: 'Email inválido' }))
+    .nullable()
+    .optional()
+    .or(z.literal('').transform(() => null)),
+  rivedereMeses: z.number().int().min(1).max(120).optional(),
+  rivedereDescuentoPct: z.number().min(0).max(100).optional(),
+  referidoDescuentoPct: z.number().min(0).max(100).optional(),
+  carritoAbandonadoHabilitado: z.boolean().optional(),
 });

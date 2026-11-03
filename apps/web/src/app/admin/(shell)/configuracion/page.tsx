@@ -8,6 +8,8 @@ import { LABELS, formatPrecio } from '@/lib/format';
 import { colors } from '@vedere/ui';
 import { AsignacionConfigForm } from '@/components/admin/tienda/AsignacionConfigForm';
 import type { AsignacionConfig } from '@/components/admin/tienda/AsignacionConfigForm';
+import { TiendaConfigForm } from '@/components/admin/tienda/TiendaConfigForm';
+import type { TiendaConfigFiscal } from '@/lib/admin/prompt6';
 
 export const metadata: Metadata = { title: 'Configuración' };
 export const dynamic = 'force-dynamic';
@@ -18,7 +20,7 @@ interface StorageConfig {
   tiposPermitidos: string[];
 }
 
-interface ConfigTiendaRes extends AsignacionConfig {
+interface ConfigTiendaRes extends AsignacionConfig, Partial<TiendaConfigFiscal> {
   entorno: { emails: boolean; adminNotifyEmail: string | null; mpCredenciales: boolean };
 }
 
@@ -102,6 +104,50 @@ export default async function ConfiguracionPage() {
                 . Las ópticas y su radio se editan en{' '}
                 <Link href="/admin/opticas" className="underline underline-offset-2">
                   Ópticas
+                </Link>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gris-medio">No se pudo consultar la configuración de la tienda.</p>
+          )}
+        </Card>
+        <Card
+          title="Datos fiscales y programas"
+          className="lg:col-span-2"
+          actions={
+            tienda ? (
+              <Badge tone={tienda.cuit ? 'ok' : 'warn'}>{tienda.cuit ? 'Datos fiscales cargados' : 'Faltan datos fiscales'}</Badge>
+            ) : undefined
+          }
+        >
+          {tienda ? (
+            <>
+              <TiendaConfigForm
+                inicial={{
+                  razonSocial: tienda.razonSocial ?? null,
+                  cuit: tienda.cuit ?? null,
+                  domicilioFiscal: tienda.domicilioFiscal ?? null,
+                  condicionIva: tienda.condicionIva ?? null,
+                  ingresosBrutos: tienda.ingresosBrutos ?? null,
+                  inicioActividades: tienda.inicioActividades ?? null,
+                  emailContacto: tienda.emailContacto ?? null,
+                  rivedereMeses: tienda.rivedereMeses ?? 24,
+                  rivedereDescuentoPct: tienda.rivedereDescuentoPct ?? 15,
+                  referidoDescuentoPct: tienda.referidoDescuentoPct ?? 10,
+                  carritoAbandonadoHabilitado: tienda.carritoAbandonadoHabilitado ?? true,
+                }}
+                editable={user?.rol === 'ADMIN'}
+              />
+              <p className="mt-4 text-sm text-gris-medio">
+                Los datos fiscales se muestran en el pie de la tienda y de todos los emails. Las plantillas de cada
+                email se editan en{' '}
+                <Link href="/admin/plantillas" className="underline underline-offset-2">
+                  Plantillas de email
+                </Link>{' '}
+                y los textos legales en{' '}
+                <Link href="/admin/legal" className="underline underline-offset-2">
+                  Páginas legales
                 </Link>
                 .
               </p>

@@ -185,6 +185,11 @@ export interface PedidoPublico {
   createdAt: string;
   pagadoEn: string | null;
   reservaExpiraEn: string | null;
+  asignadoEn?: string | null;
+  aceptadoEn?: string | null;
+  enviadoEn?: string | null;
+  entregadoEn?: string | null;
+  numeroSeguimiento?: string | null;
   cliente: { email: string; nombre: string; dni: string; telefono: string };
   entrega: {
     modalidad: Modalidad;
@@ -257,4 +262,107 @@ export function formatDioptria(v: number | null | undefined): string {
   if (v === null || v === undefined) return '—';
   const s = (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
   return v > 0 ? `+${s}` : s;
+}
+
+/** Etiqueta del estado para el cliente, según la modalidad (LISTO + envío = "Listo para despachar"). */
+export function labelEstadoCliente(estado: EstadoPedido, modalidad?: Modalidad | null): string {
+  if (estado === 'LISTO' && modalidad === 'ENVIO_DOMICILIO') return 'Listo para despachar';
+  return ESTADO_PEDIDO_LABEL[estado];
+}
+
+/** Pasos de la línea de tiempo que ve el cliente (sin los estados terminales). */
+export function pasosPedido(modalidad: Modalidad): Array<{ estado: EstadoPedido; label: string; detalle: string }> {
+  const retiro = modalidad === 'RETIRO_OPTICA';
+  return [
+    { estado: 'PAGADO', label: 'Pago confirmado', detalle: 'Recibimos tu pago.' },
+    { estado: 'ASIGNADO', label: 'En tu óptica', detalle: 'Una óptica socia toma tu pedido.' },
+    { estado: 'EN_ARMADO', label: 'En armado', detalle: retiro ? 'La óptica prepara tus anteojos.' : 'La óptica arma tus anteojos.' },
+    retiro
+      ? { estado: 'LISTO', label: 'Listo para retirar', detalle: 'Pasá a buscarlos con tu DNI.' }
+      : { estado: 'ENVIADO', label: 'Enviado', detalle: 'Tu pedido va camino a tu casa.' },
+    { estado: 'ENTREGADO', label: 'Entregado', detalle: retiro ? 'Ajustados en la óptica.' : 'Recibido en tu domicilio.' },
+  ];
+}
+
+/** Orden del ciclo de vida para saber qué pasos ya se cumplieron. */
+export const ORDEN_ESTADO: Record<EstadoPedido, number> = {
+  PENDIENTE_PAGO: 0,
+  PAGADO: 1,
+  ASIGNADO: 2,
+  ACEPTADO: 2,
+  EN_ARMADO: 3,
+  LISTO: 4,
+  ENVIADO: 5,
+  ENTREGADO: 6,
+  CANCELADO: -1,
+  DEVUELTO: -1,
+};
+
+/** Dirección del formulario de entrega (coincide con `direccionInput` de la API). */
+export interface DireccionCheckout {
+  direccion: string;
+  piso: string;
+  localidad: string;
+  provincia: string;
+  codigoPostal: string;
+  lat: number | null;
+  lng: number | null;
+  placeId: string | null;
+  direccionCompleta: string | null;
+}
+
+export const DIRECCION_VACIA: DireccionCheckout = {
+  direccion: '',
+  piso: '',
+  localidad: '',
+  provincia: '',
+  codigoPostal: '',
+  lat: null,
+  lng: null,
+  placeId: null,
+  direccionCompleta: null,
+};
+
+/** Dirección guardada en la cuenta (GET /cuenta/direcciones, prompt 6). */
+export interface DireccionGuardada extends Omit<DireccionCheckout, 'piso' | 'direccionCompleta'> {
+  id: string;
+  etiqueta: string;
+  piso: string | null;
+  telefono: string | null;
+  predeterminada: boolean;
+}
+
+export const PROVINCIAS = [
+  'Buenos Aires',
+  'CABA',
+  'Catamarca',
+  'Chaco',
+  'Chubut',
+  'Córdoba',
+  'Corrientes',
+  'Entre Ríos',
+  'Formosa',
+  'Jujuy',
+  'La Pampa',
+  'La Rioja',
+  'Mendoza',
+  'Misiones',
+  'Neuquén',
+  'Río Negro',
+  'Salta',
+  'San Juan',
+  'San Luis',
+  'Santa Cruz',
+  'Santa Fe',
+  'Santiago del Estero',
+  'Tierra del Fuego',
+  'Tucumán',
+] as const;
+
+/** Sugerencia de autocompletado (GET /checkout/direcciones). */
+export interface SugerenciaDireccion {
+  placeId: string;
+  descripcion: string;
+  principal: string;
+  secundario: string;
 }

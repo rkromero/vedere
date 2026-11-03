@@ -13,7 +13,7 @@ import { disponibilidad, liberarReservasVencidas } from './reservas.js';
 import { dec } from './serialize.js';
 import { SISTEMA, onPagoAprobado, pedidoParaEmail, registrarEvento } from './asignacion.js';
 import type { Actor } from './asignacion.js';
-import { emailEstadoCliente } from './email.js';
+import { emailEstadoCliente, emailPagoRechazado, emailPedidoConfirmado } from './email.js';
 import type { pedidoInput, recetaInput } from '../schemas/checkout.js';
 import type { z } from 'zod';
 
@@ -493,6 +493,20 @@ export async function crearPedido(
     return pedido;
   });
 
+  // Confirmación del pedido al cliente (prompt 6): con transferencia lleva los datos de la cuenta.
+  try {
+    const cfg = await cargarConfig();
+    await emailPedidoConfirmado(env, pedidoParaEmail(creado), {
+      metodoPago: creado.metodoPago,
+      transferencia:
+        creado.metodoPago === 'TRANSFERENCIA'
+          ? { cbu: cfg.cbu, alias: cfg.alias, titular: cfg.titularCuenta, banco: cfg.banco, horasReserva: cfg.transferenciaHorasReserva }
+          : null,
+    });
+  } catch (err) {
+    ctx.log?.warn({ err, pedidoId: creado.id }, 'No se pudo mandar la confirmación del pedido');
+  }
+
   // Preferencia de Mercado Pago (fuera de la transacción: llamada externa).
   if (creado.metodoPago === 'TRANSFERENCIA') return { pedido: creado, initPoint: null };
   const cfg = mpConfig(env)!;
@@ -643,8 +657,12 @@ export async function aprobarPago(
 }
 
 /** Rechazo: el pedido sigue pendiente (puede reintentar) salvo que ya esté aprobado. */
-export async function rechazarPago(pedidoId: string, info: PagoInfo, ctx: { actor?: Actor } = {}): Promise<PedidoFull> {
-  return prisma.$transaction(async (tx) => {
+export async function rechazarPago(
+  pedidoId: string,
+  info: PagoInfo,
+  ctx: { env?: Env; actor?: Actor; nota?: string | null } = {},
+): Promise<PedidoFull> {
+  const r = await prisma.$transaction(async (tx) => {
     const pedido = await tx.pedido.findUnique({ where: { id: pedidoId } });
     if (!pedido) throw Errors.notFound('Pedido no encontrado');
     await registrarPago(tx, pedidoId, info, 'RECHAZADO');
@@ -658,8 +676,12 @@ export async function rechazarPago(pedidoId: string, info: PagoInfo, ctx: { acto
       nota: `Pago rechazado (${info.proveedor}${info.externoId ? ` #${info.externoId}` : ''})`,
       datos: { proveedor: info.proveedor, externoId: info.externoId ?? null, estado: 'RECHAZADO' },
     });
-    return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
+    const actual = await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
+    return { pedido: actual, avisar: pedido.estadoPago !== 'APROBADO' && pedido.estadoPago !== 'RECHAZADO' };
   });
+  // Prompt 6: aviso al cliente (una sola vez por pedido mientras siga sin pagar).
+  if (r.avisar && ctx.env) await emailPagoRechazado(ctx.env, pedidoParaEmail(r.pedido), { nota: ctx.nota ?? null });
+  return r.pedido;
 }
 
 /** Reembolso / contracargo total notificado por el proveedor: repone stock si se había descontado y cancela el pedido. */
@@ -782,7 +804,7 @@ export async function procesarPagoMP(
     const r = await aprobarPago(pedidoId, info, { env });
     return { pedido: r.pedido, estado, yaEstaba: r.yaEstaba };
   }
-  if (estado === 'RECHAZADO') return { pedido: await rechazarPago(pedidoId, info), estado, yaEstaba: false };
+  if (estado === 'RECHAZADO') return { pedido: await rechazarPago(pedidoId, info, { env }), estado, yaEstaba: false };
   if (estado === 'REEMBOLSADO') return { pedido: await reembolsarPago(pedidoId, info, { env }), estado, yaEstaba: false };
   // Pendiente / en proceso: se registra el intento sin tocar el pedido.
   await prisma.$transaction((tx) => registrarPago(tx, pedidoId, info, 'PENDIENTE'));

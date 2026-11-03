@@ -74,26 +74,7 @@ const mensajesRoutes: FastifyPluginAsync = async (app) => {
     return pageResponse(items, total, q);
   });
 
-  app.get('/newsletter', async (request) => {
-    const q = parse(simpleQuery, request.query);
-    const where: Prisma.SuscripcionNewsletterWhereInput = q.q
-      ? { email: { contains: q.q, mode: 'insensitive' } }
-      : {};
-    const [total, items] = await Promise.all([
-      prisma.suscripcionNewsletter.count({ where }),
-      prisma.suscripcionNewsletter.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        ...paginate(q),
-      }),
-    ]);
-    return pageResponse(items, total, q);
-  });
-
-  app.delete<{ Params: { id: string } }>('/newsletter/:id', async (request, reply) => {
-    await prisma.suscripcionNewsletter.deleteMany({ where: { id: request.params.id } });
-    return reply.status(204).send();
-  });
+  // Prompt 6: GET /newsletter, GET /newsletter/csv y DELETE /newsletter/:id viven en ./sitio.ts (filtro activos/bajas, resumen, CSV).
 };
 
 export default mensajesRoutes;

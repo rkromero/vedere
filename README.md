@@ -184,6 +184,28 @@ Un usuario OPTICA sólo ve los pedidos de su óptica: cualquier otro pedido resp
 
 `GET /config`, `POST /cotizar`, `GET /optica?lat&lng`, `GET /direcciones` + `POST /direcciones/geocodificar`, `POST /recetas/archivo`, `POST /pedidos` (crea el pedido: Mercado Pago o transferencia), `GET /mis-pedidos`, `GET /pedidos/:id`, `POST /pedidos/:id/comprobante`, `POST /pedidos/:id/sincronizar-pago`, webhook de Mercado Pago, y (prompt 5) `GET /pedidos/buscar?numero&email` y `POST /pedidos/:id/solicitudes` `{ tipo, motivo, detalle?, email }` para pedir un cambio o devolución (sólo pedidos LISTO/ENVIADO/ENTREGADO dentro de los 30 días, una pendiente por pedido).
 
+### Cuenta del cliente, sitio público y jobs — prompt 6
+
+| Ruta | Descripción |
+| --- | --- |
+| `POST /auth/register` (`ref?`), `POST /auth/recuperar {email}`, `POST /auth/restablecer {token, password}` | Registro (acepta el código de referido del link `/r/<codigo>` y manda el email de bienvenida), recuperación de contraseña por email (token de un solo uso, vence a la hora) |
+| `GET /auth/google?next=` · `GET /auth/google/callback` | Login con Google (OAuth 2.0, flujo de código). Sin `GOOGLE_CLIENT_ID` el botón no aparece |
+| `GET /cuenta` · `PUT /cuenta/datos` · `PUT /cuenta/password` | Resumen de la cuenta (pedidos, recetas, direcciones, favoritos, Plan Rivedere), datos personales y contraseña |
+| `GET /cuenta/pedidos` · `/pedidos/:id` · `GET/DELETE /cuenta/recetas/:id` | Pedidos con estado y seguimiento, recetas guardadas |
+| `GET/POST/PUT/DELETE /cuenta/direcciones` (+ `/:id/predeterminada`) · `GET/PUT/DELETE /cuenta/favoritos/:productoId` · `GET /cuenta/favoritos/ids` | Direcciones y favoritos |
+| `GET /cuenta/referidos` | Link único (`/r/<codigo>`), referidos y cupones emitidos. Al pagar el referido su primera compra, ambos reciben un cupón (`ConfigTienda.referidoDescuentoPct`) por email |
+| `GET /sitio/config` · `GET /sitio/paginas/:slug` · `GET /sitio/redirecciones` | Datos fiscales y programas, páginas legales (Markdown editable en el admin), redirecciones 301/302 (las aplica el middleware de la web) |
+| `POST /sitio/arrepentimiento` · `GET /sitio/arrepentimiento/:numero?email=` | Botón de arrepentimiento (Res. 424/2020): genera el número de trámite `ARR-<año>-<n>`, avisa al cliente y al admin |
+| `POST /catalogo/newsletter` · `GET/POST /sitio/newsletter/baja/:token` | Alta (con email de confirmación y link de baja) y baja en un click |
+| `GET /feeds/google.xml` · `GET /feeds/meta.csv` | Feeds de productos para Google Shopping (RSS 2.0) y Meta (CSV) |
+| `POST /jobs/:nombre` (header `x-cron-secret`) | Dispara a mano `carrito-abandonado` (1 h y 24 h), `rivedere` (Plan Rivedere: cupón de recambio a los `rivedereMeses` meses de la última compra de recetado) y `volvio-stock`. La API los agenda sola (`CARRITO_ABANDONADO_INTERVALO_MIN`, `RIVEDERE_INTERVALO_HORAS`); `.github/workflows/jobs.yml` los dispara además desde afuera |
+| `GET /admin/reportes?desde&hasta` · `/admin/reportes/csv?tipo=pedidos\|items` | Ventas por día/semana/mes, ticket promedio, conversión, pedidos por estado, ventas por línea / óptica / colección / código de creador, más vendidos |
+| `GET/PUT /admin/plantillas-email/:tipo` (+ `/restablecer`, `/vista-previa`, `/prueba`) | Plantillas de los emails transaccionales (asunto, título, cuerpo con `{{variables}}`, CTA) |
+| `GET/PUT /admin/paginas-legales/:slug` · `/admin/redirecciones` · `/admin/arrepentimientos` · `/admin/newsletter` | Términos, privacidad, cambios y cookies editables; redirecciones (ADMIN); trámites de arrepentimiento (estado + respuesta); suscriptores (CSV) |
+| `GET /admin/debug/sentry` · `GET /admin/debug/error` | Estado de Sentry y error 500 forzado para verificar que llega (ADMIN) |
+
+Emails (Resend; sin `RESEND_API_KEY` quedan como SIMULADO en `emails_enviados`): bienvenida, recuperar contraseña, pedido confirmado, pago aprobado/rechazado, asignado a óptica, aceptado, en armado, listo para retirar, enviado, entregado, cancelado, carrito abandonado (1 h y 24 h), volvió el stock, Plan Rivedere, recompensa por referido, arrepentimiento recibido y alta de newsletter. Layout React Email con branding Vedere y datos fiscales en el pie. Al aprobarse un pago la API manda además la conversión a Meta (Conversions API, `event_id` `purchase-<id>` deduplicado con el Pixel) y a GA4 (Measurement Protocol).
+
 ### Tienda (`/catalogo/*`) — público, sólo productos PUBLICADOS
 
 | Ruta                                                                 | Descripción                                                                                                                                                                                                                                                         |
@@ -213,7 +235,9 @@ La web expone un proxy same-origin `/api/*` hacia la API, así las cookies de se
 - **Pedidos** (`/admin/pedidos`): resumen por estado, filtros por estado, pago, óptica (o sin asignar), línea, canal, medio de pago y fechas; búsqueda por número, email, nombre o DNI; exportación CSV. Detalle (`/admin/pedidos/[id]`): línea de tiempo (fecha, usuario, nota), notas internas, cambio de estado (con `forzar`), reasignación con las ópticas candidatas ordenadas por distancia (radio, cupo, rechazos) y motivo obligatorio, asignación automática, reenvío de emails, reembolso total/parcial, cancelación con devolución de stock, confirmación/rechazo de transferencias, factura, solicitudes del cliente (aprobar con nuevo pedido o reintegro / rechazar), reembolsos y emails enviados.
 - **Ópticas** (`/admin/opticas`): mapa Leaflet + OpenStreetMap con todas las ópticas y su radio de cobertura; ABM con razón social, CUIT, óptico responsable y matrícula, radio, comisión, capacidad diaria y estado; cupo usado hoy.
 - **Cambios y devoluciones** (`/admin/solicitudes`) y **Liquidaciones** (`/admin/liquidaciones?mes=AAAA-MM`, detalle por óptica).
-- **Configuración**: plazo de aceptación (horas hábiles), horario hábil y sábado hábil (editable por ADMIN).
+- **Configuración**: plazo de aceptación (horas hábiles), horario hábil y sábado hábil, datos fiscales (razón social, CUIT, domicilio, condición IVA, IIBB, inicio de actividades), Plan Rivedere (meses y descuento), referidos (descuento) y carrito abandonado (editables por ADMIN).
+- **Reportes** (`/admin/reportes`): ventas hoy / semana / mes, ticket promedio, conversión, pedidos por estado, ventas por línea, óptica, colección y código de creador, más vendidos; filtro por fechas y CSV.
+- **Plantillas de email**, **Páginas legales**, **Arrepentimientos**, **Newsletter** y **Redirecciones** (prompt 6): ver la tabla de rutas de la API.
 
 ## Panel de la óptica (`/optica`)
 
@@ -222,10 +246,12 @@ La web expone un proxy same-origin `/api/*` hacia la API, así las cookies de se
 
 ## Tienda pública
 
-- Rutas: `/` (home), `/sol` `/recetados` `/multifocales` `/accesorios` `/novedades` `/mas-vendidos`, `/coleccion/[slug]`, `/categoria/[slug]`, `/buscar?q=`, `/p/[slug]?v=[varianteId]` (ficha), `/opticas` (mapa Leaflet + listado + buscador por CP), `/faq`, `/cambios-y-devoluciones`, `/contacto`, `/como-funciona`, `/envios`, `/nosotros`, `/legal/{terminos,privacidad,arrepentimiento}`, `/checkout` (pantallas pendientes del prompt 4), más `sitemap.xml` y `robots.txt`.
+- Rutas: `/` (home), `/sol` `/recetados` `/multifocales` `/accesorios` `/novedades` `/mas-vendidos`, `/coleccion/[slug]`, `/categoria/[slug]`, `/buscar?q=`, `/p/[slug]?v=[varianteId]` (ficha), `/opticas` (mapa Leaflet + listado + buscador por CP), `/faq`, `/cambios-y-devoluciones`, `/contacto`, `/como-funciona`, `/envios`, `/nosotros`, `/legal/{terminos,privacidad,cookies}` (editables desde el admin), `/legal/arrepentimiento` (formulario con número de trámite), `/checkout` (datos → entrega y óptica socia → receta → pago), `/gracias/[id]`, `/pedido` (seguimiento por número + email), `/ingresar`, `/recuperar`, `/restablecer/[token]`, `/r/[codigo]` (link de referidos), `/mi-cuenta` (pedidos, recetas, direcciones, favoritos, datos, referidos, Plan Rivedere), `/newsletter/baja/[token]`, más `sitemap.xml` y `robots.txt`.
 - `/cambios-y-devoluciones` incluye el formulario de solicitud: el cliente busca su pedido por número + email, ve sus solicitudes y pide un cambio o una devolución; el equipo la resuelve en `/admin/solicitudes` y el cliente recibe emails.
 - Catálogo con Server Components y caché (`revalidate` 60 s en home/listados/ficha, 300 s en ópticas). Filtros y orden viven en la URL (compartibles); scroll infinito con `?page=` en `replaceState`.
 - Carrito en `localStorage` (`vedere_carrito_v1`); si hay sesión (`/api/auth/me`), se mezcla con `/carrito` y se sincroniza con un `PUT` debounced. Vistos recientemente en `vedere_recientes_v1`.
+- Marketing y SEO (prompt 6): GTM, GA4 (eventos `view_item`, `add_to_cart`, `begin_checkout`, `purchase`, `sign_up`) y Meta Pixel se cargan sólo con consentimiento del banner de cookies (`vedere_cookies` en localStorage); `NEXT_PUBLIC_ANALYTICS_DEBUG=true` activa el `debug_mode` de GA4. JSON-LD `Organization`, `WebSite` y `Product`, Open Graph, redirecciones 301 administrables (middleware), feeds de productos.
+- Legal (Argentina): botón de arrepentimiento en el footer y en `/legal/arrepentimiento` (número de trámite + aviso al admin), banner de cookies, términos / privacidad / cambios / cookies editables, datos fiscales en footer y emails, leyenda de Defensa del consumidor.
 - Componentes compartidos y accesibles en `packages/ui` (Drawer con `<dialog>` nativo, botones de 44 px, foco visible, contraste AA).
 
 ## Tests
@@ -241,7 +267,17 @@ pnpm test
 - `apps/api/test/checkout.test.ts`: checkout y pagos (prompt 4): cotización, cupones, promociones, pedido por transferencia con comprobante, webhook de Mercado Pago (al aprobar queda ASIGNADO a una óptica), reembolso parcial y total por Mercado Pago (`POST /v1/payments/:id/refunds` simulado, con idempotency key; rechazo de MP → 502), reservas de stock.
 - `apps/api/test/asignacion.test.ts` (unitario): elección de la óptica más cercana con radio y cupo (3 ópticas en CABA, pedido en Caballito → Flores), exclusiones, pausadas, horas hábiles (`sumarHorasHabiles`) y transiciones de estado.
 - `apps/api/test/opticas.test.ts` (integración, criterios de aceptación del prompt 5): con 3 ópticas en CABA un pedido en Caballito se asigna a la más cercana dentro de su radio al confirmar el pago (eventos PAGO/ASIGNACION, emails al cliente y a la óptica); la capacidad diaria desvía a la siguiente; un usuario OPTICA no ve pedidos de otra óptica ni por URL ni por API (403) y otros roles no entran a `/optica`; si la óptica rechaza pasa a la siguiente y el admin lo ve en la línea de tiempo, y sin cobertura queda sin asignar con aviso al admin; reasignación manual con motivo auditada; ciclo aceptar → en armado → listo → entregado con un evento y un email `ESTADO_*` por cambio, transición inválida → 409; envío a domicilio exige seguimiento; plazo vencido reasigna (`procesarVencidos`); agenda de turnos; la liquidación mensual coincide con la suma de los pedidos entregados por óptica; solicitud del cliente → aprobación con reintegro (DEVUELTO, reembolso manual) o con pedido nuevo sin cargo; filtros, búsqueda por DNI y CSV del listado; cancelación con devolución de stock.
+- `apps/api/test/cuenta.test.ts`, `sitio.test.ts`, `plantillas.test.ts`, `reportes.test.ts`, `jobs.test.ts`, `feeds.test.ts`, `marketing.test.ts` (prompt 6): cuenta y referidos, arrepentimiento con número de trámite, plantillas editables, reportes, jobs idempotentes, feeds y conversiones server-side con `fetch` simulado.
 - Los tests de integración se saltean si no hay `TEST_DATABASE_URL`.
+- **End-to-end** (`apps/e2e`, Playwright): `pnpm --filter @vedere/e2e test` contra una web levantada (`E2E_BASE_URL`, default `http://localhost:3000`) con la base seedeada. Cubre el flujo de compra completo (registro → ficha → carrito → checkout → transferencia → gracias → Mi cuenta) y los paneles (admin y óptica). En GitHub Actions corre el job `e2e` del workflow `CI` en cada PR, después de lint / typecheck / tests / build; el reporte HTML queda como artifact.
+
+## Producción
+
+- **Dominio y HTTPS**: en Railway, servicio `web` → Settings → Networking → Custom Domain (`www.vedere.com.ar`) y `api` (`api.vedere.com.ar`); Railway emite el certificado solo al apuntar el CNAME. Después: `WEB_URL`, `API_PUBLIC_URL`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_API_URL`, `API_URL` y el redirect URI de Google.
+- **Backups diarios de PostgreSQL**: `.github/workflows/backup.yml` corre `scripts/backup-db.sh` todos los días a las 06:00 UTC (y a mano): `pg_dump` comprimido subido a R2 (`backups/db/vedere-<fecha>.sql.gz`, retención 30 días) y guardado como artifact 7 días. Secrets: `BACKUP_DATABASE_URL` (la URL pública de Postgres en Railway), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`. Restaurar: `gunzip -c archivo.sql.gz | psql "$DATABASE_URL"`.
+- **Logs y Sentry**: logs JSON (pino) en Railway; con `SENTRY_DSN` (API) y `NEXT_PUBLIC_SENTRY_DSN` (web) los errores 5xx, los no controlados y los del navegador van a Sentry. Prueba: `GET /admin/debug/error` (ADMIN).
+- **CI/CD**: `.github/workflows/ci.yml` (lint, typecheck, tests, build y e2e en cada PR y push a `main`/`develop`); Railway despliega sólo desde `main` (protegida, CI obligatorio). `jobs.yml` dispara los jobs por cron como respaldo.
+
 
 ## Deploy en Railway
 
@@ -277,6 +313,11 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 | `ADMIN_NOTIFY_EMAIL`                                                                      | casilla que recibe los avisos de pedidos sin asignar y solicitudes de cambio                                                  |
 | `ASIGNACION_INTERVALO_MIN`                                                                | cada cuántos minutos se reasignan los pedidos con plazo de aceptación vencido (5)                                             |
 | `OPTICA_PASSWORD`                                                                         | sólo para el seed: crea un usuario OPTICA por óptica socia (`optica-<slug>@vedere.com.ar`)                                   |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                | login con Google (redirect URI `<WEB_URL>/api/auth/google/callback`)                                                         |
+| `META_PIXEL_ID`, `META_CAPI_TOKEN`, `META_TEST_EVENT_CODE`                                | Meta Conversions API (purchase server side)                                                                                   |
+| `GA4_MEASUREMENT_ID`, `GA4_API_SECRET`                                                    | GA4 Measurement Protocol (purchase server side)                                                                               |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                        | Sentry de la API                                                                                                              |
+| `CARRITO_ABANDONADO_INTERVALO_MIN`, `RIVEDERE_INTERVALO_HORAS`, `CRON_SECRET`             | jobs (15 min / 24 h) y secreto para dispararlos desde afuera                                                                  |
 
 **web**
 
@@ -290,6 +331,8 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 | `NEXT_PUBLIC_CUOTAS`, `NEXT_PUBLIC_ENVIO_GRATIS_DESDE` | cuotas sin interés (6) y umbral de envío gratis (80000) |
 | `NEXT_PUBLIC_INSTAGRAM`, `NEXT_PUBLIC_EMAIL_CONTACTO` | enlaces del footer y contacto |
 | `NEXT_PUBLIC_COLAB_TITULO`, `NEXT_PUBLIC_COLAB_TEXTO`, `NEXT_PUBLIC_COLAB_LINK`, `NEXT_PUBLIC_COLAB_CTA` | banner de colaboración de la home (opcionales) |
+| `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA4_ID`, `NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_ANALYTICS_DEBUG` | GTM, GA4 y Meta Pixel (sólo con consentimiento de cookies); debug de GA4 |
+| `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | Sentry de la web |
 
 Las `NEXT_PUBLIC_*` se inyectan en **build time** (Railway las pasa como build args al Dockerfile): al cambiarlas hay que redeployar la web.
 

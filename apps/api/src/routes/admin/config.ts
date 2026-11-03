@@ -26,6 +26,18 @@ export function serializeConfig(c: ConfigTienda) {
     horaHabilDesde: c.horaHabilDesde,
     horaHabilHasta: c.horaHabilHasta,
     sabadoHabil: c.sabadoHabil,
+    // Prompt 6
+    razonSocial: c.razonSocial,
+    cuit: c.cuit,
+    domicilioFiscal: c.domicilioFiscal,
+    condicionIva: c.condicionIva,
+    ingresosBrutos: c.ingresosBrutos,
+    inicioActividades: c.inicioActividades,
+    emailContacto: c.emailContacto,
+    rivedereMeses: c.rivedereMeses,
+    rivedereDescuentoPct: dec(c.rivedereDescuentoPct) ?? 0,
+    referidoDescuentoPct: dec(c.referidoDescuentoPct) ?? 0,
+    carritoAbandonadoHabilitado: c.carritoAbandonadoHabilitado,
     updatedAt: c.updatedAt,
   };
 }
@@ -44,6 +56,14 @@ const configRoutes: FastifyPluginAsync = async (app) => {
         reservaMinutos: app.env.RESERVA_STOCK_MINUTOS,
         emails: !!app.env.RESEND_API_KEY,
         adminNotifyEmail: app.env.ADMIN_NOTIFY_EMAIL ?? null,
+        // Prompt 6
+        googleLogin: !!(app.env.GOOGLE_CLIENT_ID && app.env.GOOGLE_CLIENT_SECRET),
+        metaCapi: !!(app.env.META_PIXEL_ID && app.env.META_CAPI_TOKEN),
+        ga4Mp: !!(app.env.GA4_MEASUREMENT_ID && app.env.GA4_API_SECRET),
+        sentry: !!app.env.SENTRY_DSN,
+        cronSecret: !!app.env.CRON_SECRET,
+        carritoAbandonadoIntervaloMin: app.env.CARRITO_ABANDONADO_INTERVALO_MIN,
+        rivedereIntervaloHoras: app.env.RIVEDERE_INTERVALO_HORAS,
       },
     };
   });

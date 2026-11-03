@@ -9,12 +9,14 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import type { Env } from './env.js';
 import { loadEnv } from './env.js';
+import { iniciarSentry } from './lib/sentry.js';
 import authPlugin from './plugins/auth.js';
 import { errorHandler } from './lib/errors.js';
 import { storageDriver } from './lib/storage.js';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin/index.js';
+import debugRoutes from './routes/admin/debug.js';
 import catalogoRoutes from './routes/catalogo.js';
 import carritoRoutes from './routes/carrito.js';
 import checkoutRoutes from './routes/checkout.js';
@@ -37,6 +39,7 @@ export interface BuildAppOptions {
 
 export async function buildApp(opts: BuildAppOptions = {}) {
   const env = opts.env ?? loadEnv();
+  iniciarSentry(env);
 
   const app = Fastify({
     logger: opts.logger ?? defaultLogger(env),
@@ -102,6 +105,7 @@ export async function buildApp(opts: BuildAppOptions = {}) {
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(adminRoutes, { prefix: '/admin' });
+  await app.register(debugRoutes, { prefix: '/admin/debug' });
   await app.register(catalogoRoutes, { prefix: '/catalogo' });
   await app.register(carritoRoutes, { prefix: '/carrito' });
   await app.register(checkoutRoutes, { prefix: '/checkout' });

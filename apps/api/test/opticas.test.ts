@@ -161,9 +161,10 @@ describe.skipIf(!hasDb)('ópticas socias y gestión de pedidos (integración)', 
     expect(Number(db.comisionPct)).toBe(12);
 
     const emails = await prisma.emailEnviado.findMany({ where: { pedidoId: pedido.id }, orderBy: { createdAt: 'asc' } });
-    expect(emails.map((e) => e.tipo)).toEqual(['ESTADO_PAGADO', 'ESTADO_ASIGNADO', 'OPTICA_NUEVO_PEDIDO']);
+    // Prompt 6: PEDIDO_CONFIRMADO sale al crear el pedido.
+    expect(emails.map((e) => e.tipo)).toEqual(['PEDIDO_CONFIRMADO', 'ESTADO_PAGADO', 'ESTADO_ASIGNADO', 'OPTICA_NUEVO_PEDIDO']);
     expect(emails.every((e) => e.estado === 'SIMULADO')).toBe(true); // sin RESEND_API_KEY
-    expect(emails[2]!.para).toBe('flores@test.vedere');
+    expect(emails[3]!.para).toBe('flores@test.vedere');
   });
 
   it('la capacidad diaria desvía el pedido a la siguiente óptica más cercana', async () => {

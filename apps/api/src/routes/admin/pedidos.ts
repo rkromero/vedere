@@ -319,7 +319,7 @@ const pedidosRoutes: FastifyPluginAsync = async (app) => {
         confirmadoPorId: request.user.sub,
         detalle: { rechazadoManualmente: true, nota: body?.nota ?? null },
       },
-      { actor: actorDe(request.user) },
+      { actor: actorDe(request.user), env: app.env, nota: body?.nota ?? null },
     );
     const p = await prisma.pedido.findUniqueOrThrow({ where: { id: existing.id }, include: pedidoIncludeDetalle });
     return serializePedido(p, { admin: true });

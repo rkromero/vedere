@@ -13,10 +13,11 @@ import {
   avisoStockInput,
   contactoInput,
   cuponValidar,
-  newsletterInput,
   opticasQuery,
   sugerenciasQuery,
 } from '../schemas/tienda.js';
+import { newsletterAltaInput } from '../schemas/sitio.js';
+import { enviarPlantilla } from '../lib/plantillas.js';
 import { buildTree, categoriaConDescendientes } from './admin/categorias.js';
 
 const listQuery = paginationQuery.extend(catalogoQuery.shape);
@@ -411,12 +412,24 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
   // Newsletter / avisos de stock / contacto
   // ------------------------------------------------------------------
   app.post('/newsletter', formRateLimit, async (request, reply) => {
-    const body = parse(newsletterInput, request.body);
-    await prisma.suscripcionNewsletter.upsert({
+    const body = parse(newsletterAltaInput, request.body);
+    // Prompt 6: guarda el nombre, reactiva si tenía baja y confirma por email (con link de baja) sólo en altas nuevas o reactivaciones.
+    const previa = await prisma.suscripcionNewsletter.findUnique({ where: { email: body.email } });
+    const s = await prisma.suscripcionNewsletter.upsert({
       where: { email: body.email },
-      update: {},
-      create: { email: body.email, origen: body.origen ?? 'web' },
+      update: { bajaEn: null, ...(body.nombre ? { nombre: body.nombre } : {}) },
+      create: { email: body.email, nombre: body.nombre ?? null, origen: body.origen ?? 'web' },
     });
+    if (!previa || previa.bajaEn !== null) {
+      const web = app.env.WEB_URL.replace(/\/$/, '');
+      await enviarPlantilla(app.env, {
+        tipo: 'NEWSLETTER_ALTA',
+        para: s.email,
+        vars: { nombre: s.nombre ?? '', url: `${web}/`, urlBaja: `${web}/newsletter/baja/${s.token}` },
+        ctaHref: `${web}/`,
+        urlBaja: `${web}/newsletter/baja/${s.token}`,
+      });
+    }
     return reply.status(201).send({ ok: true });
   });
 

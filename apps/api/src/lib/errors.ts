@@ -1,4 +1,5 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
+import { capturarError } from './sentry.js';
 import { Prisma } from '@vedere/db';
 import { ZodError } from 'zod';
 
@@ -87,6 +88,7 @@ export function errorHandler(
 
   if (statusCode >= 500) {
     request.log.error({ err: error }, 'Error no controlado');
+    capturarError(error, { method: request.method, url: request.url, requestId: request.id });
     return reply.status(statusCode).send({
       error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado' },
     });

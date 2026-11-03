@@ -258,7 +258,7 @@ export function CartDrawer() {
               </p>
             )}
             <p className="text-sm text-gris-texto">{textoCuotas} con tarjetas bancarias.</p>
-            <Link href="/checkout" className={buttonClasses('primary', 'lg', 'w-full')}>
+            <Link href="/checkout" onClick={cerrar} className={buttonClasses('primary', 'lg', 'w-full')} data-testid="cart-checkout">
               Iniciar compra
             </Link>
             <button

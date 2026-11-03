@@ -4,6 +4,8 @@ import { prisma } from '@vedere/db';
 import type { EstadoPedido, Prisma } from '@vedere/db';
 import type { Env } from '../env.js';
 import { dec } from './serialize.js';
+import { enviarPlantilla } from './plantillas.js';
+import type { VariablesPlantilla } from './plantillas.js';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -191,7 +193,34 @@ export function plantillaEstado(
   return { asunto: titulo, html: layoutEmail(env, { titulo, cuerpo, cta }) };
 }
 
-/** Email al cliente por un cambio de estado. Devuelve el registro (o null si el estado no tiene plantilla). */
+/** Variables comunes de las plantillas de pedido ({{nombre}}, {{numero}}, {{total}}, {{optica}}, ...). */
+export function variablesPedido(env: Env, p: PedidoParaEmail): VariablesPlantilla {
+  const web = env.WEB_URL.replace(/\/$/, '');
+  const o = p.optica ?? null;
+  return {
+    nombre: p.nombre.split(' ')[0] || p.nombre,
+    numero: p.numero,
+    total: ars(dec(p.total) ?? 0),
+    optica: o?.nombre ?? 'tu óptica socia',
+    opticaDireccion: o ? `${o.direccion}, ${o.localidad}` : '',
+    seguimiento: p.numeroSeguimiento ?? '',
+    url: `${web}/gracias/${p.id}`,
+  };
+}
+
+/** Bloques HTML (ya escapados) que acompañan a los emails de pedido: ítems y óptica. */
+export function extraPedidoHtml(p: PedidoParaEmail, opts: { optica?: boolean; nota?: string | null } = {}): string {
+  const nota = opts.nota ? `<p style="margin:0 0 12px">${escapar(opts.nota)}</p>` : '';
+  return nota + bloqueItems(p.items) + (opts.optica && p.optica ? bloqueOptica(p.optica) : '');
+}
+
+const ESTADOS_CON_OPTICA: EstadoPedido[] = ['ASIGNADO', 'ACEPTADO', 'EN_ARMADO', 'LISTO', 'ENVIADO', 'ENTREGADO'];
+
+/**
+ * Email al cliente por un cambio de estado. Usa la plantilla editable `ESTADO_<estado>` (tabla plantillas_email
+ * o default); si el estado no tiene plantilla editable (p. ej. DEVUELTO) cae en la plantilla fija de código.
+ * Devuelve el registro (o null si no corresponde email).
+ */
 export async function emailEstadoCliente(
   env: Env,
   p: PedidoParaEmail,
@@ -199,9 +228,65 @@ export async function emailEstadoCliente(
   extra: { nota?: string | null } = {},
   db: Db = prisma,
 ) {
+  const web = env.WEB_URL.replace(/\/$/, '');
+  const enviado = await enviarPlantilla(
+    env,
+    {
+      tipo: `ESTADO_${estado}`,
+      para: p.email,
+      vars: variablesPedido(env, p),
+      ctaHref: `${web}/gracias/${p.id}`,
+      extraHtml: extraPedidoHtml(p, { optica: ESTADOS_CON_OPTICA.includes(estado), nota: extra.nota }),
+      pedidoId: p.id,
+    },
+    db,
+  );
+  if (enviado) return enviado;
   const t = plantillaEstado(env, p, estado, extra);
   if (!t) return null;
   return enviarEmail(env, { para: p.email, asunto: t.asunto, html: t.html }, { pedidoId: p.id, tipo: `ESTADO_${estado}` }, db);
+}
+
+/** Confirmación al crear el pedido (antes del pago). Con transferencia incluye CBU/alias y el plazo. */
+export async function emailPedidoConfirmado(
+  env: Env,
+  p: PedidoParaEmail,
+  opts: {
+    metodoPago: 'MERCADO_PAGO' | 'MERCADO_PAGO_BILLETERA' | 'TRANSFERENCIA';
+    transferencia?: { cbu: string | null; alias: string | null; titular: string | null; banco: string | null; horasReserva: number } | null;
+  },
+  db: Db = prisma,
+) {
+  const web = env.WEB_URL.replace(/\/$/, '');
+  let extra = extraPedidoHtml(p);
+  if (opts.metodoPago === 'TRANSFERENCIA' && opts.transferencia) {
+    const t = opts.transferencia;
+    const lineas = [
+      t.titular ? `Titular: <strong>${escapar(t.titular)}</strong>` : null,
+      t.banco ? `Banco: ${escapar(t.banco)}` : null,
+      t.cbu ? `CBU: <strong>${escapar(t.cbu)}</strong>` : null,
+      t.alias ? `Alias: <strong>${escapar(t.alias)}</strong>` : null,
+      `Importe: <strong>${ars(dec(p.total) ?? 0)}</strong>`,
+    ].filter(Boolean);
+    extra += `<p style="margin:12px 0;padding:12px 14px;background:#F2F2F0;border-radius:8px">Transferí dentro de las próximas ${t.horasReserva} horas y subí el comprobante desde el link del pedido.<br>${lineas.join('<br>')}</p>`;
+  } else if (opts.metodoPago !== 'TRANSFERENCIA') {
+    extra += `<p style="margin:12px 0">Si todavía no terminaste el pago en Mercado Pago, podés retomarlo desde el link del pedido.</p>`;
+  }
+  return enviarPlantilla(
+    env,
+    { tipo: 'PEDIDO_CONFIRMADO', para: p.email, vars: variablesPedido(env, p), ctaHref: `${web}/gracias/${p.id}`, extraHtml: extra, pedidoId: p.id },
+    db,
+  );
+}
+
+/** Pago rechazado (Mercado Pago o transferencia rechazada por el admin). */
+export async function emailPagoRechazado(env: Env, p: PedidoParaEmail, extra: { nota?: string | null } = {}, db: Db = prisma) {
+  const web = env.WEB_URL.replace(/\/$/, '');
+  return enviarPlantilla(
+    env,
+    { tipo: 'PAGO_RECHAZADO', para: p.email, vars: variablesPedido(env, p), ctaHref: `${web}/gracias/${p.id}`, extraHtml: extraPedidoHtml(p, { nota: extra.nota }), pedidoId: p.id },
+    db,
+  );
 }
 
 // ---------- Otros emails ----------

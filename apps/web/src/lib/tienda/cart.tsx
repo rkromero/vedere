@@ -14,6 +14,7 @@ import {
 import type { ReactNode } from 'react';
 import { site } from '@/config/site';
 import type { Producto, Variante } from '@/lib/types';
+import { track } from '@/lib/analytics';
 import { tiendaApi } from './client';
 import type { CartItem, CuponAplicado } from './types';
 import type { Cotizacion, DescuentoAplicado } from './checkout';
@@ -267,6 +268,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
       },
     });
     setAbierto(true);
+    track('add_to_cart', {
+      value: producto.precio * Math.max(1, opts.cantidad ?? 1),
+      items: [
+        {
+          item_id: variante.sku,
+          item_name: producto.nombre,
+          item_brand: producto.marca?.nombre,
+          item_category: producto.linea,
+          item_variant: variante.colorArmazon,
+          price: producto.precio,
+          quantity: Math.max(1, opts.cantidad ?? 1),
+        },
+      ],
+    });
   }, []);
 
   const setCantidad = useCallback(

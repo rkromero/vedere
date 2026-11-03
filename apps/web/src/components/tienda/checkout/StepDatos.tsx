@@ -1,6 +1,6 @@
 'use client';
 // Paso 1: datos y contacto. Compra como invitado, con cuenta (login inline) o creando una cuenta.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { Button, Checkbox, Field, Input } from '@vedere/ui';
@@ -43,6 +43,15 @@ export function StepDatos({
   onContinuar: (datos: DatosContacto) => void;
 }) {
   const [form, setForm] = useState<DatosContacto>(valor);
+  // Prefill tardío (sesión o dirección guardada): sólo completa lo que está vacío.
+  useEffect(() => {
+    setForm((f) => ({
+      email: f.email || valor.email,
+      nombre: f.nombre || valor.nombre,
+      dni: f.dni || valor.dni,
+      telefono: f.telefono || valor.telefono,
+    }));
+  }, [valor]);
   const [modo, setModo] = useState<'invitado' | 'login'>('invitado');
   const [login, setLogin] = useState({ email: valor.email, password: '' });
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -92,7 +101,7 @@ export function StepDatos({
       {usuario ? (
         <p className="rounded-xl bg-gris-claro px-4 py-3 text-sm">
           Comprás con tu cuenta <strong>{usuario.email}</strong>. El pedido y tu receta quedan guardados en{' '}
-          <Link href="/cuenta" className="underline underline-offset-4">
+          <Link href="/mi-cuenta" className="underline underline-offset-4">
             Mi cuenta
           </Link>
           .
@@ -131,16 +140,16 @@ export function StepDatos({
       <form onSubmit={submit} className="space-y-4" noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Email" required error={err.email} hint="Te mandamos la confirmación acá." className="sm:col-span-2">
-            {(p) => <Input {...p} type="email" autoComplete="email" inputMode="email" value={form.email} onChange={set('email')} readOnly={!!usuario} />}
+            {(p) => <Input {...p} type="email" autoComplete="email" inputMode="email" value={form.email} onChange={set('email')} readOnly={!!usuario} data-testid="checkout-email" />}
           </Field>
           <Field label="Nombre y apellido" required error={err.nombre} className="sm:col-span-2">
-            {(p) => <Input {...p} autoComplete="name" value={form.nombre} onChange={set('nombre')} />}
+            {(p) => <Input {...p} autoComplete="name" value={form.nombre} onChange={set('nombre')} data-testid="checkout-nombre" />}
           </Field>
           <Field label="DNI" required error={err.dni} hint="Sin puntos. Lo necesita la óptica para la receta.">
-            {(p) => <Input {...p} inputMode="numeric" autoComplete="off" value={form.dni} onChange={set('dni')} maxLength={10} />}
+            {(p) => <Input {...p} inputMode="numeric" autoComplete="off" value={form.dni} onChange={set('dni')} maxLength={10} data-testid="checkout-dni" />}
           </Field>
           <Field label="Teléfono" required error={err.telefono} hint="Con código de área, ej. 11 5555 1234.">
-            {(p) => <Input {...p} type="tel" inputMode="tel" autoComplete="tel" value={form.telefono} onChange={set('telefono')} />}
+            {(p) => <Input {...p} type="tel" inputMode="tel" autoComplete="tel" value={form.telefono} onChange={set('telefono')} data-testid="checkout-telefono" />}
           </Field>
         </div>
 
@@ -154,14 +163,14 @@ export function StepDatos({
             {cuenta.crear && (
               <Field label="Contraseña" required error={err.password} hint="Mínimo 8 caracteres." className="mt-3">
                 {(p) => (
-                  <Input {...p} type="password" autoComplete="new-password" value={cuenta.password} onChange={(e) => onCuenta({ ...cuenta, password: e.target.value })} />
+                  <Input {...p} type="password" autoComplete="new-password" value={cuenta.password} onChange={(e) => onCuenta({ ...cuenta, password: e.target.value })} data-testid="checkout-password" />
                 )}
               </Field>
             )}
           </div>
         )}
 
-        <Button type="submit" size="md" className="w-full sm:w-auto">
+        <Button type="submit" size="md" className="w-full sm:w-auto" data-testid="checkout-siguiente">
           Continuar a entrega
         </Button>
       </form>

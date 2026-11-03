@@ -35,6 +35,14 @@ export const site = {
   whatsapp: process.env.NEXT_PUBLIC_WHATSAPP ?? '',
   instagram: process.env.NEXT_PUBLIC_INSTAGRAM ?? 'https://www.instagram.com/vedere.ar',
   emailContacto: process.env.NEXT_PUBLIC_EMAIL_CONTACTO ?? 'hola@vedere.com.ar',
+  /** Analítica (prompt 6): los scripts se cargan sólo con consentimiento de cookies. Vacío = apagado. */
+  analytics: {
+    gtmId: process.env.NEXT_PUBLIC_GTM_ID ?? '',
+    ga4Id: process.env.NEXT_PUBLIC_GA4_ID ?? '',
+    metaPixelId: process.env.NEXT_PUBLIC_META_PIXEL_ID ?? '',
+    /** Modo debug de GA4 (DebugView) y log en consola de cada evento. También con ?debug_analytics=1. */
+    debug: (process.env.NEXT_PUBLIC_ANALYTICS_DEBUG ?? 'false') === 'true',
+  },
   /** Banner de colaboración de la home. */
   colab: {
     titulo: process.env.NEXT_PUBLIC_COLAB_TITULO ?? 'Vedere × Taller Luz',
@@ -67,6 +75,7 @@ export const site = {
     legal: [
       { label: 'Términos y condiciones', href: '/legal/terminos' },
       { label: 'Privacidad', href: '/legal/privacidad' },
+      { label: 'Cookies', href: '/legal/cookies' },
       { label: 'Botón de arrepentimiento', href: '/legal/arrepentimiento' },
     ],
   },

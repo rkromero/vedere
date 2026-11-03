@@ -5,6 +5,8 @@ import type { Producto, Paged } from '@/lib/types';
 import type { Coleccion, Filtros, Optica, PromoMensaje, Sugerencias } from './types';
 import { CONFIG_FALLBACK } from './checkout';
 import type { ConfigCheckout } from './checkout';
+import { SITIO_FALLBACK } from './sitio';
+import type { PaginaLegal, SitioConfig } from './sitio';
 
 const REVALIDATE = 60;
 
@@ -49,6 +51,20 @@ const VACIO: Paged<Producto> = { items: [], page: 1, pageSize: 24, total: 0, tot
 /** Configuración comercial pública (medios de pago, cuotas por línea, envío). */
 export const checkoutConfig = () =>
   publicApiOr<ConfigCheckout>('/checkout/config', CONFIG_FALLBACK, { tags: ['config'] });
+
+/** Datos fiscales, programas y flags del sitio (prompt 6). Con la API caída usa el fallback. */
+export const sitioConfig = () => publicApiOr<SitioConfig>('/sitio/config', SITIO_FALLBACK, { tags: ['sitio'] });
+
+/** Página legal editable desde el admin (null si no existe o no está publicada). */
+export async function paginaLegal(slug: string): Promise<PaginaLegal | null> {
+  try {
+    return await publicApi<PaginaLegal>(`/sitio/paginas/${encodeURIComponent(slug)}`, {
+      tags: ['sitio', `legal:${slug}`],
+    });
+  } catch {
+    return null;
+  }
+}
 
 export const catalogo = {
   productos: (query: string) =>

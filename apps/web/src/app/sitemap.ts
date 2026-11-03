@@ -23,7 +23,10 @@ const ESTATICAS = [
   '/nosotros',
   '/legal/terminos',
   '/legal/privacidad',
+  '/legal/cookies',
   '/legal/arrepentimiento',
+  '/ingresar',
+  '/pedido',
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

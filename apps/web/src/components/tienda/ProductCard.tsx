@@ -7,6 +7,7 @@ import { ColorDots, Price, Tag, cn } from '@vedere/ui';
 import { useCuotas } from '@/lib/tienda/comercial';
 import type { Producto } from '@/lib/types';
 import { altProducto, imagenesTarjeta, urlProducto, varianteInicial } from '@/lib/tienda/producto';
+import { FavoritoButton } from '@/components/tienda/cuenta/FavoritoButton';
 
 export function ProductCard({
   producto,
@@ -64,6 +65,7 @@ export function ProductCard({
           {agotado && <Tag tone="carey">Sin stock</Tag>}
         </div>
       </Link>
+      <FavoritoButton productoId={producto.id} size="sm" className="absolute right-2 top-2" />
 
       <div className="font-text mt-3 flex flex-col gap-1 px-0.5">
         <div className="flex items-start justify-between gap-2">

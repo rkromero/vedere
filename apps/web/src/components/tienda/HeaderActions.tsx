@@ -34,7 +34,7 @@ export function MenuButton({ nav }: { nav: ReadonlyArray<{ label: string; href: 
         </nav>
         <ul className="font-text mt-6 space-y-3 text-base">
           <li>
-            <Link href="/cuenta" onClick={() => setOpen(false)} className="underline-offset-4 hover:underline">
+            <Link href="/mi-cuenta" onClick={() => setOpen(false)} className="underline-offset-4 hover:underline">
               Mi cuenta
             </Link>
           </li>

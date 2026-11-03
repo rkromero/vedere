@@ -56,6 +56,13 @@ export async function requireOptica(nextPath = '/optica'): Promise<SessionUser> 
   return user;
 }
 
+/** Exige sesión (cualquier rol) para Mi cuenta; redirige a /ingresar si no hay. */
+export async function requireCliente(nextPath = '/mi-cuenta'): Promise<SessionUser> {
+  const user = await getSession();
+  if (!user) redirect(`/ingresar?next=${encodeURIComponent(nextPath)}`);
+  return user;
+}
+
 /** Exige ADMIN. */
 export async function requireAdmin(nextPath = '/admin'): Promise<SessionUser> {
   const user = await requireStaff(nextPath);

@@ -3,6 +3,7 @@ import { buildApp } from './app.js';
 import { procesarVencidos } from './lib/asignacion.js';
 import { iniciarJobs } from './jobs/index.js';
 import { liberarReservasVencidas } from './lib/reservas.js';
+import { capturarError, vaciarSentry } from './lib/sentry.js';
 
 async function main() {
   const app = await buildApp();
@@ -32,6 +33,7 @@ async function main() {
     clearInterval(asignacionTimer);
     detenerJobs();
     await app.close();
+    await vaciarSentry();
     await prisma.$disconnect();
     process.exit(0);
   };
@@ -40,6 +42,10 @@ async function main() {
 
   await app.listen({ port: PORT, host: HOST });
 }
+
+process.on('unhandledRejection', (err) => {
+  capturarError(err, { origen: 'unhandledRejection' });
+});
 
 main().catch((err) => {
   console.error('No se pudo iniciar la API:', err);

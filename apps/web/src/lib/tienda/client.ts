@@ -40,6 +40,7 @@ export const tiendaApi = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  delete: <T>(path: string) => request<T>('DELETE', path),
   /** Sube un archivo (multipart, campo `file`). */
   upload: async <T>(path: string, file: File): Promise<T> => {
     const fd = new FormData();

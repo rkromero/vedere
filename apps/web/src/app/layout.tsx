@@ -23,13 +23,56 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'es_AR',
     siteName: site.name,
+    url: site.url,
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: `${site.name} — ${site.tagline}` }],
   },
+  twitter: { card: 'summary_large_image' },
+  robots: { index: true, follow: true },
 };
+
+// JSON-LD Organization + WebSite (prompt 6): identidad de marca y búsqueda interna para Google.
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${site.url}/#organization`,
+    name: site.name,
+    url: site.url,
+    logo: `${site.url}/brand/logo.svg`,
+    email: site.emailContacto,
+    sameAs: [site.instagram].filter(Boolean),
+    areaServed: 'AR',
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'customer service',
+      email: site.emailContacto,
+      availableLanguage: 'es',
+      ...(site.whatsapp ? { telephone: `+${site.whatsapp}` } : {}),
+    },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    '@id': `${site.url}/#website`,
+    name: site.name,
+    url: site.url,
+    inLanguage: 'es-AR',
+    publisher: { '@id': `${site.url}/#organization` },
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${site.url}/buscar?q={search_term_string}` },
+      'query-input': 'required name=search_term_string',
+    },
+  },
+];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-AR" className={archivo.variable}>
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        {children}
+      </body>
     </html>
   );
 }
