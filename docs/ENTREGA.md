@@ -1,6 +1,6 @@
 # Vedere · Documento de entrega (prompt 6 de 6)
 
-Fecha: 3 de noviembre de 2026 · Rama `feat/checkout-pagos` → PR #2 a `main` (https://github.com/rkromero/vedere/pull/2)
+Fecha: 3 de noviembre de 2026 · PR #2 (https://github.com/rkromero/vedere/pull/2) mergeado en `main` y desplegado en Railway ese mismo día.
 
 Este documento cierra la serie de seis prompts. Resume qué quedó construido, dónde está publicado, con qué usuarios se prueba cada rol, cómo verificar los criterios de aceptación y qué falta para que la tienda opere con clientes reales.
 
@@ -11,11 +11,11 @@ Este documento cierra la serie de seis prompts. Resume qué quedó construido, d
 | 1      | Base del monorepo, auth, Prisma, CI                                    | En `main` y en Railway                    |
 | 2      | Catálogo y backoffice                                                  | En `main` y en Railway                    |
 | 3      | Tienda pública                                                         | En `main` y en Railway                    |
-| 4      | Checkout, Mercado Pago, transferencia, stock                           | En PR #2 (pendiente de merge)             |
-| 5      | Ópticas socias, asignación, panel de la óptica, liquidaciones          | En PR #2 (pendiente de merge)             |
-| 6      | Cuentas de cliente, emails, marketing, legal, reportes, producción      | En PR #2 (pendiente de merge)             |
+| 4      | Checkout, Mercado Pago, transferencia, stock                           | En `main` y en Railway (PR #2)            |
+| 5      | Ópticas socias, asignación, panel de la óptica, liquidaciones          | En `main` y en Railway (PR #2)            |
+| 6      | Cuentas de cliente, emails, marketing, legal, reportes, producción      | En `main` y en Railway (PR #2)            |
 
-Al mergear el PR #2, Railway despliega `api` y `web` desde `main`, corre `prisma migrate deploy` al arrancar la API y la tienda queda con todo el alcance. Antes de recibir clientes reales hay que cargar las variables de la sección 6.
+El PR #2 se mergeó el 3 de noviembre de 2026; Railway desplegó `api` y `web`, la API aplicó las migraciones al arrancar y se corrió el seed en producción con `SEED_CATALOGO=false` (19 plantillas de email, 4 páginas legales, datos fiscales de ejemplo, configuración de tienda). Antes de recibir clientes reales hay que cargar las variables de la sección 6.
 
 ## 2. URLs
 
@@ -147,6 +147,6 @@ Son datos o decisiones que sólo puede aportar el negocio. Nada de esto bloquea 
 ## 7. Repositorio y CI
 
 - Repo: https://github.com/rkromero/vedere · rama `main` protegida (PR + CI).
-- PR #2: https://github.com/rkromero/vedere/pull/2 (prompts 4, 5 y 6). Workflows: `ci.yml` (lint, typecheck, tests, build, e2e), `backup.yml`, `jobs.yml`.
+- PR #2: https://github.com/rkromero/vedere/pull/2 (prompts 4, 5 y 6), mergeado por squash el 3 de noviembre de 2026. Workflows: `ci.yml` (lint, typecheck, tests, build, e2e), `backup.yml`, `jobs.yml`.
 - Plan de trabajo del prompt 6 y contratos entre módulos: `docs/PLAN-PROMPT6.md`.
 - README: tabla de rutas, variables por servicio y sección "Producción".
