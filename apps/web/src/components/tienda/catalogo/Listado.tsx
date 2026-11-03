@@ -140,6 +140,8 @@ export async function Listado({
               </div>
             ) : (
               <>
+                {/* Nivel intermedio para las tarjetas (h3) debajo del título (h1). */}
+                <h2 className="sr-only">Productos</h2>
                 <ul
                   className="mt-6 grid grid-cols-2 gap-x-3 gap-y-7 sm:gap-x-4 lg:grid-cols-4"
                   aria-label="Productos"
