@@ -45,6 +45,8 @@ const envSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   R2_BUCKET: z.preprocess(emptyToUndefined, z.string().optional()),
   R2_PUBLIC_URL: z.preprocess(emptyToUndefined, z.url().optional()),
+  // Endpoint S3 alternativo (MinIO, tests). Si falta se usa https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+  R2_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -127,7 +127,7 @@ Base: `http://localhost:4000`. Todas las respuestas de error tienen la forma `{ 
 | `GET /admin/productos/export.csv` · `POST /admin/productos/import`                         | Exportar / importar CSV (una fila por variante; multipart `file`, `text/csv` o `{ csv }`). La importación es todo-o-nada y devuelve errores por fila                                      |
 | `GET/POST /admin/productos/:id/variantes`, `GET/PUT/DELETE /admin/variantes/:id`           | Variantes                                                                                                                                                                                 |
 | `POST/PUT /admin/variantes/:id/imagenes`, `DELETE /admin/variantes/:id/imagenes/:imagenId` | Imágenes (PUT reemplaza la lista en el orden recibido)                                                                                                                                    |
-| `POST /admin/imagenes`                                                                     | multipart `file` (+ `folder`) → sharp → WebP 320 / 800 / 1600 → R2 o disco local. `GET /admin/imagenes/config` informa el driver                                                          |
+| `POST /admin/imagenes`                                                                     | multipart `file` (+ `folder`) → sharp → WebP 320 / 800 / 1600 → R2 (S3 `PutObject`, cache immutable) o disco local. `GET /admin/imagenes/config` informa el driver                        |
 | `POST /admin/imagenes/presign`                                                             | URL prefirmada para subida directa a R2                                                                                                                                                   |
 
 Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usuarios/:id`, `POST /admin/usuarios/:id/password`, `POST /admin/usuarios/:id/desactivar`, `POST /admin/usuarios/:id/activar`. Un OPERADOR recibe 403.
@@ -140,6 +140,7 @@ Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usua
 | `GET /catalogo/productos/:slug`                                      | Detalle (404 si no está publicado)                                                                                                                                                                                                                                  |
 | `GET /catalogo/categorias` · `/marcas` · `/colecciones` · `/filtros` | Árbol de categorías, marcas, colecciones vigentes y valores disponibles para filtros                                                                                                                                                                                |
 
+- Las rutas `PUT` aceptan cuerpos parciales: sólo cambian los campos enviados (los defaults del alta no se reaplican).
 - Cookies: `vedere_access` (JWT, `ACCESS_TOKEN_TTL`, path `/`) y `vedere_refresh` (opaco, `REFRESH_TOKEN_TTL_DAYS`, path `/auth`). Ambas `httpOnly`.
 - Roles: `ADMIN`, `OPERADOR`, `OPTICA`, `CLIENTE`. Guards: `app.authenticate` y `app.requireRole(...roles)`.
 - Rate limiting: `RATE_LIMIT_MAX`/min global por IP, `RATE_LIMIT_AUTH_MAX`/min en register, login y refresh.
@@ -159,7 +160,10 @@ pnpm test
 ```
 
 - `apps/api/test/roles.test.ts`, `health.test.ts`: unitarios con la DB mockeada.
-- `apps/api/test/catalogo.test.ts`: integración contra `TEST_DATABASE_URL` (vitest aplica las migraciones): alta de marca / categoría hija / colección / producto con 3 variantes e imágenes y lectura pública, SKU duplicado → 409 sin guardar, archivar saca del público sin borrar, permisos OPERADOR vs usuarios, CSV exportado → importado sin errores, orden y filtros públicos, borrado en cascada. Si no hay `TEST_DATABASE_URL` se saltean.
+- `apps/api/test/catalogo.test.ts`: integración contra `TEST_DATABASE_URL` (vitest aplica las migraciones): alta de marca / categoría hija / colección / producto con 3 variantes e imágenes y lectura pública, SKU duplicado → 409 sin guardar, PUT parcial que no pisa el resto de los campos, archivar saca del público sin borrar, OPERADOR gestiona el catálogo (crea, edita, publica, archiva, borra) pero no usuarios, CSV exportado → importado sin errores, orden y filtros públicos, borrado en cascada.
+- `apps/api/test/usuarios.test.ts`: ABM de usuarios sólo ADMIN: alta con hash argon2id, filtros, email duplicado → 409, edición, cambio de rol (revoca sesiones), reset de contraseña (la vieja deja de servir), desactivar (no puede loguearse ni refrescar) y activar, protección del propio usuario, OPERADOR → 403 en todas las rutas.
+- `apps/api/test/storage.test.ts`: driver R2 real contra un servidor S3-compatible levantado en el test (sin cuenta de Cloudflare): sharp → WebP 320 / 800 / 1600, 3 `PutObject` firmados con SigV4 al bucket, URLs públicas, no agranda imágenes chicas, URL prefirmada para subida directa y `POST /admin/imagenes` multipart de punta a punta.
+- Los tests de integración se saltean si no hay `TEST_DATABASE_URL`.
 
 ## Deploy en Railway
 
@@ -181,7 +185,8 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 | `COOKIE_SECURE`                                                                           | `true`                                                                                                      |
 | `COOKIE_SAME_SITE`                                                                        | `lax` (las cookies viajan por el proxy `/api/*` de la web)                                                  |
 | `STORAGE_DRIVER`, `UPLOADS_DIR`, `MAX_UPLOAD_MB`                                          | `auto` / `./uploads` / `10`. Con `auto` usa R2 si hay credenciales; si no, disco local (efímero en Railway) |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | credenciales del bucket (pendiente)                                                                         |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | credenciales del bucket (pendiente). Al cargarlas, `STORAGE_DRIVER=auto` pasa solo a R2                     |
+| `R2_ENDPOINT`                                                                             | opcional: endpoint S3 alternativo (MinIO local). Vacío = R2 de la cuenta                                    |
 | `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`, `RATE_LIMIT_MAX`, `RATE_LIMIT_AUTH_MAX`     | opcionales (ver `.env.example`)                                                                             |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE`                                           | para el seed                                                                                                |
 

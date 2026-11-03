@@ -194,6 +194,37 @@ describe.skipIf(!hasDb)('catálogo (integración)', () => {
     expect(invalido.json().error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('un PUT parcial no pisa los campos que no se envían (categorías, estado, variantes)', async () => {
+    const antesRes = await get(`/admin/productos/${ids.producto}`, adminCookie);
+    expect(antesRes.statusCode, antesRes.body).toBe(200);
+    const antes = antesRes.json();
+    expect(antes.categorias.length).toBeGreaterThan(0);
+    const res = await put(`/admin/productos/${ids.producto}`, { precio: antes.precio + 1 });
+    expect(res.statusCode).toBe(200);
+    const despues = res.json();
+    expect(despues.precio).toBe(antes.precio + 1);
+    expect(despues.estado).toBe(antes.estado);
+    expect(despues.destacado).toBe(antes.destacado);
+    expect(despues.permiteReceta).toBe(antes.permiteReceta);
+    expect(despues.categorias.map((c: { id: string }) => c.id).sort()).toEqual(
+      antes.categorias.map((c: { id: string }) => c.id).sort(),
+    );
+    expect(despues.variantes.length).toBe(antes.variantes.length);
+
+    // Variante: cambiar sólo el stock conserva imágenes y activa.
+    const v = antes.variantes[0];
+    const vres = await put(`/admin/variantes/${v.id}`, { stock: v.stock + 5 });
+    expect(vres.statusCode).toBe(200);
+    expect(vres.json().imagenes.length).toBe(v.imagenes.length);
+    expect(vres.json().activa).toBe(v.activa);
+    expect(vres.json().stockMinimo).toBe(v.stockMinimo);
+
+    // Marca inactiva + PUT sólo nombre → sigue inactiva.
+    const m = await post('/admin/marcas', { nombre: 'Inactiva', activa: false });
+    const mres = await put(`/admin/marcas/${m.json().id}`, { nombre: 'Inactiva 2' });
+    expect(mres.json()).toMatchObject({ nombre: 'Inactiva 2', activa: false });
+  });
+
   it('archivar un producto lo saca del endpoint público sin borrarlo', async () => {
     const bulk = await post('/admin/productos/bulk', { ids: [ids.producto], accion: 'archivar' });
     expect(bulk.statusCode).toBe(200);
@@ -220,6 +251,56 @@ describe.skipIf(!hasDb)('catálogo (integración)', () => {
     expect(marca.statusCode).toBe(201);
     const lista = await get('/admin/productos', operadorCookie);
     expect(lista.statusCode).toBe(200);
+
+    // El OPERADOR crea, edita, publica, archiva y borra productos.
+    const creadoOp = await post(
+      '/admin/productos',
+      {
+        nombre: 'Producto del Operador',
+        linea: 'SOL',
+        precio: 1000,
+        marcaId: marca.json().id,
+        categoriaIds: [ids.catHija],
+        variantes: [{ colorArmazon: 'Negro', sku: 'OPE-001', stock: 3 }],
+      },
+      operadorCookie,
+    );
+    expect(creadoOp.statusCode).toBe(201);
+    expect(creadoOp.json().createdById).toBeTruthy();
+    const opId = creadoOp.json().id as string;
+    const editado = await put(
+      `/admin/productos/${opId}`,
+      { precio: 1500, destacado: true },
+      operadorCookie,
+    );
+    expect(editado.statusCode).toBe(200);
+    expect(editado.json()).toMatchObject({ precio: 1500, destacado: true });
+    const variante = await post(
+      `/admin/productos/${opId}/variantes`,
+      { colorArmazon: 'Carey', sku: 'OPE-002', stock: 1 },
+      operadorCookie,
+    );
+    expect(variante.statusCode).toBe(201);
+    const publicar = await post(
+      '/admin/productos/bulk',
+      { ids: [opId], accion: 'publicar' },
+      operadorCookie,
+    );
+    expect(publicar.statusCode).toBe(200);
+    expect((await get('/catalogo/productos/producto-del-operador')).statusCode).toBe(200);
+    const archivar = await post(
+      '/admin/productos/bulk',
+      { ids: [opId], accion: 'archivar' },
+      operadorCookie,
+    );
+    expect(archivar.statusCode).toBe(200);
+    expect((await get('/catalogo/productos/producto-del-operador')).statusCode).toBe(404);
+    const borrar = await app.inject({
+      method: 'DELETE',
+      url: `/admin/productos/${opId}`,
+      cookies: operadorCookie,
+    });
+    expect(borrar.statusCode).toBe(204);
     const dash = await get('/admin/dashboard', operadorCookie);
     expect(dash.statusCode).toBe(200);
     expect(dash.json().variantesBajoStock.length).toBeGreaterThan(0);

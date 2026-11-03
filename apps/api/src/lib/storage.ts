@@ -16,6 +16,8 @@ export interface R2Config {
   secretAccessKey: string;
   bucket: string;
   publicUrl: string;
+  /** Endpoint S3. Por defecto el de Cloudflare R2 de la cuenta. */
+  endpoint: string;
 }
 
 export function getR2Config(env: Env): R2Config | null {
@@ -34,6 +36,10 @@ export function getR2Config(env: Env): R2Config | null {
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     bucket: env.R2_BUCKET,
     publicUrl: env.R2_PUBLIC_URL.replace(/\/$/, ''),
+    endpoint: (env.R2_ENDPOINT ?? `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`).replace(
+      /\/$/,
+      '',
+    ),
   };
 }
 
@@ -45,17 +51,23 @@ export function storageDriver(env: Env): StorageDriver {
   return getR2Config(env) ? 'r2' : 'local';
 }
 
-let client: S3Client | null = null;
+let client: { key: string; s3: S3Client } | null = null;
 
 function getClient(cfg: R2Config): S3Client {
-  if (!client) {
-    client = new S3Client({
-      region: 'auto',
-      endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
-    });
+  const key = `${cfg.endpoint}|${cfg.bucket}|${cfg.accessKeyId}`;
+  if (!client || client.key !== key) {
+    client = {
+      key,
+      s3: new S3Client({
+        region: 'auto',
+        endpoint: cfg.endpoint,
+        // Con un endpoint alternativo (MinIO, tests) el bucket va en el path, no como subdominio.
+        forcePathStyle: !cfg.endpoint.endsWith('.r2.cloudflarestorage.com'),
+        credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+      }),
+    };
   }
-  return client;
+  return client.s3;
 }
 
 const EXT_BY_TYPE: Record<string, string> = {

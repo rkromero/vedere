@@ -19,6 +19,22 @@ const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color hex inválido (#RR
 const nullableStr = (max: number) => z.string().trim().max(max).nullable().optional();
 const idSchema = z.string().min(1);
 
+/**
+ * Esquema de actualización parcial: todos los campos opcionales y SIN los `.default()` del alta.
+ * (`.partial()` de Zod conserva los defaults, con lo que un PUT con un solo campo pisaría el resto.)
+ */
+type SinDefault<T> = T extends z.ZodDefault<infer I> ? I : T;
+type ShapeUpdate<S extends z.ZodRawShape> = { [K in keyof S]: z.ZodOptional<SinDefault<S[K]>> };
+function partialSinDefaults<S extends z.ZodRawShape>(shape: S): z.ZodObject<ShapeUpdate<S>> {
+  const out: Record<string, z.ZodTypeAny> = {};
+  for (const [k, v] of Object.entries(shape)) {
+    const inner =
+      v instanceof z.ZodDefault ? (v.def.innerType as z.ZodTypeAny) : (v as z.ZodTypeAny);
+    out[k] = inner.optional();
+  }
+  return z.object(out) as unknown as z.ZodObject<ShapeUpdate<S>>;
+}
+
 // ---------- Marca ----------
 export const marcaInput = z.object({
   nombre: z.string().trim().min(2, 'Ingresá el nombre').max(80),
@@ -26,7 +42,7 @@ export const marcaInput = z.object({
   logoUrl: z.url().nullable().optional(),
   activa: z.boolean().default(true),
 });
-export const marcaUpdate = marcaInput.partial();
+export const marcaUpdate = partialSinDefaults(marcaInput.shape);
 
 // ---------- Categoría ----------
 export const categoriaInput = z.object({
@@ -36,7 +52,7 @@ export const categoriaInput = z.object({
   orden: z.number().int().min(0).default(0),
   activa: z.boolean().default(true),
 });
-export const categoriaUpdate = categoriaInput.partial();
+export const categoriaUpdate = partialSinDefaults(categoriaInput.shape);
 
 // ---------- Colección ----------
 export const coleccionInput = z.object({
@@ -48,7 +64,7 @@ export const coleccionInput = z.object({
   vigenciaHasta: z.coerce.date().nullable().optional(),
   activa: z.boolean().default(true),
 });
-export const coleccionUpdate = coleccionInput.partial();
+export const coleccionUpdate = partialSinDefaults(coleccionInput.shape);
 
 // ---------- Imagen de variante ----------
 export const imagenInput = z.object({
@@ -79,7 +95,7 @@ export const varianteInput = z.object({
   orden: z.number().int().min(0).default(0),
   imagenes: z.array(imagenInput).default([]),
 });
-export const varianteUpdate = varianteInput.partial();
+export const varianteUpdate = partialSinDefaults(varianteInput.shape);
 
 // ---------- Producto ----------
 export const productoBase = z.object({
@@ -108,7 +124,7 @@ export const productoBase = z.object({
 export const productoInput = productoBase.extend({
   variantes: z.array(varianteInput).default([]),
 });
-export const productoUpdate = productoBase.partial();
+export const productoUpdate = partialSinDefaults(productoBase.shape);
 
 export const productoBulk = z.object({
   ids: z.array(idSchema).min(1, 'Seleccioná al menos un producto'),
@@ -163,14 +179,18 @@ const passwordSchema = z
   .max(128, 'La contraseña es demasiado larga');
 
 export const usuarioInput = z.object({
-  email: z.email({ error: 'Email inválido' }).transform((v) => v.trim().toLowerCase()),
+  email: z
+    .string({ error: 'Email inválido' })
+    .trim()
+    .toLowerCase()
+    .pipe(z.email({ error: 'Email inválido' })),
   nombre: z.string().trim().min(2, 'Ingresá el nombre').max(120),
   telefono: nullableStr(30),
   rol: z.enum(ROLES).default('CLIENTE'),
   activo: z.boolean().default(true),
   password: passwordSchema,
 });
-export const usuarioUpdate = usuarioInput.omit({ password: true }).partial();
+export const usuarioUpdate = partialSinDefaults(usuarioInput.omit({ password: true }).shape);
 export const usuarioPassword = z.object({ password: passwordSchema });
 export const usuarioListQuery = z.object({
   q: z.string().trim().max(120).optional(),
