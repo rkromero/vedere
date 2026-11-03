@@ -47,8 +47,12 @@ export async function getApiHealth(): Promise<
 > {
   try {
     const res = await fetch(`${site.apiUrl}/health`, { cache: 'no-store' });
-    const data = (await res.json()) as ApiHealth;
-    return { reachable: true, status: res.status, data };
+    const data = (await res.json().catch(() => null)) as Partial<ApiHealth> | null;
+    // Si el host responde pero no es nuestra API (ej. 404 del proxy), lo tratamos como no alcanzable.
+    if (!data || data.service !== 'vedere-api' || typeof data.db !== 'object') {
+      return { reachable: false, error: `Respuesta inesperada de la API (HTTP ${res.status})` };
+    }
+    return { reachable: true, status: res.status, data: data as ApiHealth };
   } catch (err) {
     return { reachable: false, error: err instanceof Error ? err.message : 'Error desconocido' };
   }
