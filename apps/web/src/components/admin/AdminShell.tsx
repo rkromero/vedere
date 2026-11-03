@@ -22,6 +22,12 @@ const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boo
   { href: '/admin/promos', label: 'Barra de promo' },
   { href: '/admin/cupones', label: 'Cupones' },
   { href: '/admin/mensajes', label: 'Mensajes' },
+  { href: '/admin/reportes', label: 'Reportes' },
+  { href: '/admin/plantillas', label: 'Plantillas de email' },
+  { href: '/admin/legal', label: 'Páginas legales' },
+  { href: '/admin/arrepentimientos', label: 'Arrepentimientos' },
+  { href: '/admin/newsletter', label: 'Newsletter' },
+  { href: '/admin/redirecciones', label: 'Redirecciones', adminOnly: true },
   { href: '/admin/configuracion', label: 'Configuración' },
 ];
 

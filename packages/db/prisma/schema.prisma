@@ -35,17 +35,85 @@ model User {
   /// Sólo rol OPTICA: óptica socia a la que pertenece el usuario (ve únicamente sus pedidos).
   opticaId     String?  @map("optica_id")
   optica       Optica?  @relation(fields: [opticaId], references: [id], onDelete: SetNull)
+  /// Prompt 6: login con Google (sub de Google), referidos y Plan Rivedere.
+  googleId               String?   @unique @map("google_id")
+  /// Código único para el link de referidos (/r/<codigo>).
+  codigoReferido         String?   @unique @map("codigo_referido")
+  referidoPorId          String?   @map("referido_por_id")
+  referidoPor            User?     @relation("Referidos", fields: [referidoPorId], references: [id], onDelete: SetNull)
+  referidos              User[]    @relation("Referidos")
+  /// Primera compra pagada del referido: ya se emitieron los cupones para ambos.
+  referidoRecompensadoEn DateTime? @map("referido_recompensado_en")
+  /// Último aviso del Plan Rivedere (control de la vista cada 2 años desde la última compra de recetado).
+  rivedereAvisadoEn      DateTime? @map("rivedere_avisado_en")
+  /// Alta en el newsletter desde la cuenta.
+  newsletter             Boolean   @default(false)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  refreshTokens RefreshToken[]
-  carrito       Carrito?
-  pedidos       Pedido[]
-  recetas       Receta[]
+  refreshTokens  RefreshToken[]
+  carrito        Carrito?
+  pedidos        Pedido[]
+  recetas        Receta[]
+  direcciones    Direccion[]
+  favoritos      Favorito[]
+  passwordResets PasswordReset[]
 
   @@index([rol])
   @@index([opticaId])
+  @@index([referidoPorId])
   @@map("users")
+}
+
+/// Recuperación de contraseña: token opaco de un solo uso (hash sha256), vence a la hora.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usadoEn   DateTime? @map("usado_en")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+/// Direcciones guardadas en la cuenta del cliente (se precargan en el checkout).
+model Direccion {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  etiqueta       String   @default("Casa")
+  direccion      String
+  piso           String?
+  localidad      String
+  provincia      String
+  codigoPostal   String   @map("codigo_postal")
+  lat            Float?
+  lng            Float?
+  placeId        String?  @map("place_id")
+  telefono       String?
+  predeterminada Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("direcciones")
+}
+
+/// Favoritos del cliente.
+model Favorito {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productoId String   @map("producto_id")
+  producto   Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, productoId])
+  @@index([productoId])
+  @@map("favoritos")
 }
 
 /// Refresh tokens opacos, guardados hasheados (sha256). Se rotan en cada uso.
@@ -208,6 +276,7 @@ model Producto {
   variantes   Variante[]
   pedidoItems PedidoItem[]
 
+  favoritos Favorito[]
   @@index([estado, linea])
   @@index([marcaId])
   @@index([coleccionId])
@@ -367,11 +436,17 @@ model Cupon {
 }
 
 model SuscripcionNewsletter {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String    @id @default(cuid())
+  email     String    @unique
+  nombre    String?
   origen    String?
-  createdAt DateTime @default(now()) @map("created_at")
+  /// Token para el link de baja (un click, sin login).
+  token     String    @unique @default(cuid())
+  bajaEn    DateTime? @map("baja_en")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
+  @@index([bajaEn])
   @@map("suscripciones_newsletter")
 }
 
@@ -421,8 +496,12 @@ model Carrito {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   items     Json     @default("[]")
   cupon     String?
+  /// Carrito abandonado: emails enviados a la hora y a las 24 horas de la última modificación.
+  aviso1hEn  DateTime? @map("aviso_1h_en")
+  aviso24hEn DateTime? @map("aviso_24h_en")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([updatedAt])
   @@map("carritos")
 }
 
@@ -507,6 +586,21 @@ model ConfigTienda {
   horaHabilDesde            Int      @default(9) @map("hora_habil_desde")
   horaHabilHasta            Int      @default(18) @map("hora_habil_hasta")
   sabadoHabil               Boolean  @default(true) @map("sabado_habil")
+  /// Prompt 6: datos fiscales (footer y emails).
+  razonSocial               String?  @map("razon_social")
+  cuit                      String?
+  domicilioFiscal           String?  @map("domicilio_fiscal")
+  condicionIva              String?  @map("condicion_iva")
+  ingresosBrutos            String?  @map("ingresos_brutos")
+  inicioActividades         String?  @map("inicio_actividades")
+  emailContacto             String?  @map("email_contacto")
+  /// Plan Rivedere: meses desde la última compra de recetado/multifocal y descuento del cupón de recambio.
+  rivedereMeses             Int      @default(24) @map("rivedere_meses")
+  rivedereDescuentoPct      Decimal  @default(15) @map("rivedere_descuento_pct") @db.Decimal(5, 2)
+  /// Referidos: descuento del cupón que reciben el que refiere y el referido cuando el referido compra.
+  referidoDescuentoPct      Decimal  @default(10) @map("referido_descuento_pct") @db.Decimal(5, 2)
+  /// Carrito abandonado (1 h y 24 h).
+  carritoAbandonadoHabilitado Boolean @default(true) @map("carrito_abandonado_habilitado")
   updatedAt                 DateTime @updatedAt @map("updated_at")
   updatedById               String?  @map("updated_by_id")
 
@@ -939,4 +1033,86 @@ model EmailEnviado {
 
   @@index([pedidoId, createdAt])
   @@map("emails_enviados")
+}
+
+// ============================================================
+// Cuentas, comunicaciones, marketing y legal (prompt 6)
+// ============================================================
+
+/// Plantilla editable desde el admin para cada email transaccional. El cuerpo admite variables {{nombre}}, {{numero}}, etc.
+model PlantillaEmail {
+  id          String   @id @default(cuid())
+  /// Identificador fijo del email (BIENVENIDA, PEDIDO_CONFIRMADO, ESTADO_PAGADO, ...).
+  tipo        String   @unique
+  nombre      String
+  descripcion String?
+  /// Variables disponibles para esta plantilla (documentación para el admin).
+  variables   String[] @default([])
+  asunto      String
+  titulo      String
+  cuerpo      String
+  ctaLabel    String?  @map("cta_label")
+  activa      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  @@map("plantillas_email")
+}
+
+enum EstadoArrepentimiento {
+  RECIBIDO
+  EN_PROCESO
+  RESUELTO
+  RECHAZADO
+}
+
+/// Botón de arrepentimiento (Res. 424/2020): cada solicitud recibe un número de trámite.
+model Arrepentimiento {
+  id            String                @id @default(cuid())
+  numeroTramite String                @unique @map("numero_tramite")
+  nombre        String
+  email         String
+  dni           String?
+  telefono      String?
+  pedidoNumero  String?               @map("pedido_numero")
+  pedidoId      String?               @map("pedido_id")
+  motivo        String?
+  estado        EstadoArrepentimiento @default(RECIBIDO)
+  respuesta     String?
+  resueltoEn    DateTime?             @map("resuelto_en")
+  resueltoPorId String?               @map("resuelto_por_id")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  @@index([estado, createdAt])
+  @@index([email])
+  @@map("arrepentimientos")
+}
+
+/// Páginas legales editables desde el admin (términos, privacidad, cambios, cookies). Contenido en Markdown.
+model PaginaLegal {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  titulo      String
+  intro       String?
+  contenido   String
+  publicada   Boolean  @default(true)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  @@map("paginas_legales")
+}
+
+/// Redirecciones 301/302 administrables (URLs viejas → nuevas).
+model Redireccion {
+  id         String   @id @default(cuid())
+  origen     String   @unique
+  destino    String
+  permanente Boolean  @default(true)
+  activa     Boolean  @default(true)
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("redirecciones")
 }

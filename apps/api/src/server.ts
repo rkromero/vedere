@@ -1,6 +1,7 @@
 import { prisma } from '@vedere/db';
 import { buildApp } from './app.js';
 import { procesarVencidos } from './lib/asignacion.js';
+import { iniciarJobs } from './jobs/index.js';
 import { liberarReservasVencidas } from './lib/reservas.js';
 
 async function main() {
@@ -22,11 +23,14 @@ async function main() {
       .catch((err) => app.log.error({ err }, 'Error reasignando pedidos vencidos'));
   }, app.env.ASIGNACION_INTERVALO_MIN * 60_000);
   asignacionTimer.unref();
+  // Prompt 6: carrito abandonado, Plan Rivedere y "volvió el stock" (intervalos en el env).
+  const detenerJobs = iniciarJobs(app);
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'Apagando API...');
     clearInterval(reservasTimer);
     clearInterval(asignacionTimer);
+    detenerJobs();
     await app.close();
     await prisma.$disconnect();
     process.exit(0);

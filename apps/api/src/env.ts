@@ -68,6 +68,26 @@ const envSchema = z.object({
   ADMIN_NOTIFY_EMAIL: z.preprocess(emptyToUndefined, z.string().optional()),
   // Cada cuántos minutos se revisan los pedidos cuyo plazo de aceptación venció.
   ASIGNACION_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
+
+  // ---- Prompt 6 ----
+  // Login con Google (OAuth 2.0, flujo de código). Sin credenciales el botón no se muestra.
+  GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  GOOGLE_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Meta Conversions API (server side): pixel + token de acceso. TEST_EVENT_CODE sólo para el modo debug.
+  META_PIXEL_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  META_CAPI_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+  META_TEST_EVENT_CODE: z.preprocess(emptyToUndefined, z.string().optional()),
+  // GA4 Measurement Protocol (purchase server side, opcional): id de medición y api secret.
+  GA4_MEASUREMENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  GA4_API_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Sentry (errores de la API). Sin DSN queda apagado.
+  SENTRY_DSN: z.preprocess(emptyToUndefined, z.string().optional()),
+  SENTRY_ENVIRONMENT: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Jobs: carrito abandonado (cada N minutos) y Plan Rivedere (cada N horas). 0 = apagado.
+  CARRITO_ABANDONADO_INTERVALO_MIN: z.coerce.number().int().min(0).default(15),
+  RIVEDERE_INTERVALO_HORAS: z.coerce.number().int().min(0).default(24),
+  // Secreto para disparar jobs a mano (POST /jobs/:nombre con header x-cron-secret), p. ej. desde GitHub Actions.
+  CRON_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

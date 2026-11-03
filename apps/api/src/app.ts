@@ -19,6 +19,10 @@ import catalogoRoutes from './routes/catalogo.js';
 import carritoRoutes from './routes/carrito.js';
 import checkoutRoutes from './routes/checkout.js';
 import opticaRoutes from './routes/optica.js';
+import cuentaRoutes from './routes/cuenta.js';
+import sitioRoutes from './routes/sitio.js';
+import feedsRoutes from './routes/feeds.js';
+import jobsRoutes from './routes/jobs.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -102,6 +106,10 @@ export async function buildApp(opts: BuildAppOptions = {}) {
   await app.register(carritoRoutes, { prefix: '/carrito' });
   await app.register(checkoutRoutes, { prefix: '/checkout' });
   await app.register(opticaRoutes, { prefix: '/optica' });
+  await app.register(cuentaRoutes, { prefix: '/cuenta' });
+  await app.register(sitioRoutes, { prefix: '/sitio' });
+  await app.register(feedsRoutes, { prefix: '/feeds' });
+  await app.register(jobsRoutes, { prefix: '/jobs' });
 
   return app;
 }

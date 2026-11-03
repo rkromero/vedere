@@ -3,6 +3,7 @@
 // (prompt 5) si está definido OPTICA_PASSWORD.
 // Idempotente: usa upsert por slug / sku / email. Nunca hardcodear credenciales acá.
 import { PrismaClient, Rol } from '@prisma/client';
+import { PAGINAS_LEGALES_DEFAULT, PLANTILLAS_EMAIL_DEFAULT } from '../src/prompt6.js';
 import type { EstadoProducto, Forma, Genero, Linea, Material, TipoImagen } from '@prisma/client';
 import argon2 from 'argon2';
 
@@ -803,12 +804,42 @@ async function seedCheckout(adminId: string) {
   console.log('[seed] Checkout: configuración de tienda y reglas de promoción');
 }
 
+// ---------- Prompt 6: plantillas de email, páginas legales y datos fiscales ----------
+
+async function seedPrompt6(adminId: string) {
+  for (const t of PLANTILLAS_EMAIL_DEFAULT) {
+    // Sólo se crean si faltan: lo que edita el admin no se pisa.
+    await prisma.plantillaEmail.upsert({
+      where: { tipo: t.tipo },
+      update: { variables: t.variables, descripcion: t.descripcion },
+      create: { ...t, ctaLabel: t.ctaLabel ?? null, updatedById: adminId },
+    });
+  }
+  for (const pg of PAGINAS_LEGALES_DEFAULT) {
+    await prisma.paginaLegal.upsert({ where: { slug: pg.slug }, update: {}, create: { ...pg, updatedById: adminId } });
+  }
+  await prisma.configTienda.updateMany({
+    where: { id: 'default', razonSocial: null },
+    data: {
+      razonSocial: 'Vedere S.A.S.',
+      cuit: '30-00000000-0',
+      domicilioFiscal: 'Av. Santa Fe 1234, CABA',
+      condicionIva: 'Responsable Inscripto',
+      ingresosBrutos: 'Exento',
+      inicioActividades: '01/2026',
+      emailContacto: 'hola@vedere.com.ar',
+    },
+  });
+  console.log(`[seed] Prompt 6: ${PLANTILLAS_EMAIL_DEFAULT.length} plantillas de email, ${PAGINAS_LEGALES_DEFAULT.length} páginas legales, datos fiscales`);
+}
+
 async function main() {
   const admin = await seedAdmin();
   if (process.env.SEED_CATALOGO !== 'false') await seedCatalogo(admin.id);
   // Promos, ópticas socias y cupones: idempotente, se puede correr solo con SEED_CATALOGO=false.
   if (process.env.SEED_TIENDA !== 'false') await seedTienda(admin.id);
   if (process.env.SEED_TIENDA !== 'false') await seedCheckout(admin.id);
+  await seedPrompt6(admin.id);
 }
 
 main()
