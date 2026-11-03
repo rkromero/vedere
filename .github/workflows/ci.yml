@@ -115,20 +115,19 @@ jobs:
           pnpm --filter @vedere/db exec prisma migrate deploy
           pnpm --filter @vedere/db exec tsx prisma/seed.ts
 
-      - name: Build API y web
+      - name: Build y arranque de la API
         run: |
           pnpm --filter @vedere/api build
-          pnpm --filter @vedere/web build
-
-      - name: Levantar API y web
-        run: |
           (cd apps/api && node dist/server.js > /tmp/api.log 2>&1 &)
-          (cd apps/web && pnpm exec next start --port 3000 > /tmp/web.log 2>&1 &)
-          for i in $(seq 1 60); do
-            curl -fsS http://localhost:4000/health > /dev/null 2>&1 && curl -fsS http://localhost:3000/health > /dev/null 2>&1 && break
-            sleep 2
-          done
+          for i in $(seq 1 30); do curl -fsS http://localhost:4000/health > /dev/null 2>&1 && break; sleep 2; done
           curl -fsS http://localhost:4000/health
+
+      # La web se construye con la API ya arriba: las páginas estáticas (home, listados) se prerenderizan con datos reales.
+      - name: Build y arranque de la web
+        run: |
+          pnpm --filter @vedere/web build
+          (cd apps/web && pnpm exec next start --port 3000 > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fsS http://localhost:3000/health > /dev/null 2>&1 && break; sleep 2; done
           curl -fsS -o /dev/null -w "web %{http_code}\n" http://localhost:3000/
 
       - name: Navegadores de Playwright

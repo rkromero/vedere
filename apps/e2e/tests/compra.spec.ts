@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { emailUnico, productoPublicado } from './helpers';
+import { cerrarCookies, emailUnico, productoPublicado } from './helpers';
 
 // Flujo de compra completo: registro → ficha → carrito → checkout (retiro en óptica, transferencia) →
 // gracias → el pedido aparece en Mi cuenta. Usa el seed: ópticas socias en CABA (Caballito cubre el CP 1424).
@@ -24,6 +24,7 @@ test.describe.serial('Compra de punta a punta', () => {
   test('agrega un producto y completa el checkout por transferencia', async ({ page, request }) => {
     // Sesión: reutiliza el login del test anterior vía cookies del contexto nuevo → login explícito.
     await page.goto('/ingresar');
+    await cerrarCookies(page);
     await page.getByTestId('login-email').fill(email);
     await page.getByTestId('login-password').fill(password);
     await page.getByTestId('login-submit').click();
@@ -76,6 +77,7 @@ test.describe.serial('Compra de punta a punta', () => {
 
   test('el botón de arrepentimiento genera un número de trámite', async ({ page }) => {
     await page.goto('/legal/arrepentimiento');
+    await cerrarCookies(page);
     await page.getByTestId('arrepentimiento-nombre').fill('Cliente E2E');
     await page.getByTestId('arrepentimiento-email').fill(email);
     if (numeroPedido) await page.getByTestId('arrepentimiento-pedido').fill(numeroPedido);

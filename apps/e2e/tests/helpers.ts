@@ -25,6 +25,12 @@ export async function productoPublicado(request: APIRequestContext, linea = 'SOL
   return data.items[0]!;
 }
 
+/** Cierra el banner de cookies (sólo necesarias) si está visible, para que no tape los botones del checkout. */
+export async function cerrarCookies(page: Page) {
+  const boton = page.getByRole('button', { name: /s[oó]lo necesarias/i });
+  if (await boton.isVisible().catch(() => false)) await boton.click();
+}
+
 export async function loginAdmin(page: Page) {
   await page.goto('/admin/login');
   await page.getByLabel(/email/i).fill(ADMIN_EMAIL);
