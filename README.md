@@ -226,8 +226,10 @@ Las `NEXT_PUBLIC_*` se inyectan en **build time** (Railway las pasa como build a
 
 ```bash
 railway ssh --service api -- sh -c "cd /app && pnpm --filter @vedere/db exec tsx prisma/seed.ts"
-# sólo admin, sin catálogo de ejemplo:
+# sólo admin + datos de tienda (promos, ópticas socias, cupones), sin tocar el catálogo:
 railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
+# sólo admin:
+railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false SEED_TIENDA=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
 ```
 
 ## Flujo de trabajo con Git

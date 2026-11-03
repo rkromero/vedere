@@ -724,10 +724,9 @@ async function seedTienda(adminId: string) {
 
 async function main() {
   const admin = await seedAdmin();
-  if (process.env.SEED_CATALOGO !== 'false') {
-    await seedCatalogo(admin.id);
-    await seedTienda(admin.id);
-  }
+  if (process.env.SEED_CATALOGO !== 'false') await seedCatalogo(admin.id);
+  // Promos, ópticas socias y cupones: idempotente, se puede correr solo con SEED_CATALOGO=false.
+  if (process.env.SEED_TIENDA !== 'false') await seedTienda(admin.id);
 }
 
 main()
