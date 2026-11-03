@@ -22,4 +22,5 @@ jobs:
           done
       - name: Plan Rivedere
         if: ${{ github.event.schedule == '30 9 * * *' || github.event_name == 'workflow_dispatch' }}
-        run: curl -fsS -X POST "${{ vars.API_URL }}/jobs/rivedere" -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+        run: |
+          curl -fsS -X POST "${{ vars.API_URL }}/jobs/rivedere" -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
