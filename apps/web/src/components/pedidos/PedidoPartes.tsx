@@ -5,11 +5,12 @@ import { Badge, Card } from '@/components/admin/ui';
 import { Table, Td, Th, Tr } from '@/components/admin/table';
 import { LABELS, formatFecha, formatPrecio } from '@/lib/format';
 import {
-  ESTADO_PEDIDO_LABEL,
+  labelEstadoPedido,
   TIPO_EVENTO_LABEL,
   estadoPedidoTone,
 } from '@/lib/pedidos';
 import type { Pedido, PedidoEvento, Receta } from '@/lib/pedidos';
+import type { Modalidad } from '@/lib/tienda/checkout';
 import { MODALIDAD_LABEL } from '@/lib/tienda/checkout';
 
 export function ItemsCard({ pedido }: { pedido: Pedido }) {
@@ -183,7 +184,7 @@ const TONO_EVENTO: Record<PedidoEvento['tipo'], 'neutral' | 'ok' | 'warn' | 'dan
   SOLICITUD: 'warn',
 };
 
-export function Timeline({ eventos, ocultarNotas }: { eventos: PedidoEvento[]; ocultarNotas?: boolean }) {
+export function Timeline({ eventos, ocultarNotas, modalidad }: { eventos: PedidoEvento[]; ocultarNotas?: boolean; modalidad?: Modalidad | null }) {
   const lista = (ocultarNotas ? eventos.filter((e) => e.tipo !== 'NOTA' && e.tipo !== 'EMAIL') : eventos).slice().reverse();
   if (lista.length === 0) return <p className="text-sm text-gris-medio">Sin movimientos todavía.</p>;
   return (
@@ -194,7 +195,7 @@ export function Timeline({ eventos, ocultarNotas }: { eventos: PedidoEvento[]; o
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={TONO_EVENTO[e.tipo] ?? 'neutral'}>{TIPO_EVENTO_LABEL[e.tipo] ?? e.tipo}</Badge>
             {e.tipo === 'ESTADO' && e.estadoNuevo && (
-              <Badge tone={estadoPedidoTone(e.estadoNuevo)}>{ESTADO_PEDIDO_LABEL[e.estadoNuevo]}</Badge>
+              <Badge tone={estadoPedidoTone(e.estadoNuevo)}>{labelEstadoPedido(e.estadoNuevo, modalidad)}</Badge>
             )}
             <span className="text-xs text-gris-medio">{formatFecha(e.createdAt, true)}</span>
           </div>

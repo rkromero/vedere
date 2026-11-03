@@ -21,6 +21,7 @@ import {
   ESTADO_PEDIDO_LABEL,
   estadoPagoTone,
   estadoPedidoTone,
+  labelEstadoPedido,
 } from '@/lib/pedidos';
 import type { PedidoFila, PedidosResumen } from '@/lib/pedidos';
 import { ESTADO_PAGO_LABEL, METODO_PAGO_LABEL, MODALIDAD_LABEL } from '@/lib/tienda/checkout';
@@ -191,7 +192,7 @@ export function PedidosTable({
                       {p.cliente.dni && <p className="text-xs text-gris-medio">DNI {p.cliente.dni}</p>}
                     </Td>
                     <Td>
-                      <Badge tone={estadoPedidoTone(p.estado)}>{ESTADO_PEDIDO_LABEL[p.estado]}</Badge>
+                      <Badge tone={estadoPedidoTone(p.estado)}>{labelEstadoPedido(p.estado, p.modalidad)}</Badge>
                       {vencido && (
                         <span className="mt-1 block text-xs text-carey">Plazo de aceptación vencido</span>
                       )}

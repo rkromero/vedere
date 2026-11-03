@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError, errorMessage } from '@/lib/api-client';
 import { formatFecha, formatPrecio } from '@/lib/format';
-import { ESTADO_PEDIDO_LABEL, ESTADO_TURNO_LABEL, TIPO_TURNO_LABEL, estadoPedidoTone } from '@/lib/pedidos';
+import { ESTADO_TURNO_LABEL, TIPO_TURNO_LABEL, estadoPedidoTone, labelEstadoPedido } from '@/lib/pedidos';
 import type { EstadoPedido, Pedido } from '@/lib/pedidos';
 import { MODALIDAD_LABEL } from '@/lib/tienda/checkout';
 import { Badge, Btn, Card, Field, Input, Modal, PageHeader, Textarea } from '@/components/admin/ui';
@@ -105,7 +105,7 @@ export function OpticaPedidoDetalle({ inicial }: { inicial: Pedido }) {
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Badge tone={estadoPedidoTone(pedido.estado)} className="px-3 py-1 text-sm">{ESTADO_PEDIDO_LABEL[pedido.estado]}</Badge>
+        <Badge tone={estadoPedidoTone(pedido.estado)} className="px-3 py-1 text-sm">{labelEstadoPedido(pedido.estado, pedido.entrega.modalidad)}</Badge>
         {pedido.estado === 'ASIGNADO' && pedido.aceptarAntesDe && (
           <Badge tone={vencido ? 'danger' : 'warn'} className="px-3 py-1 text-sm">
             {vencido ? 'Plazo vencido: puede reasignarse en cualquier momento' : `Aceptar antes de ${formatFecha(pedido.aceptarAntesDe, true)}`}
@@ -153,7 +153,7 @@ export function OpticaPedidoDetalle({ inicial }: { inicial: Pedido }) {
             )}
           </Card>
           <Card title="Historial">
-            <Timeline eventos={pedido.eventos ?? []} ocultarNotas />
+            <Timeline eventos={pedido.eventos ?? []} ocultarNotas modalidad={pedido.entrega.modalidad} />
           </Card>
         </div>
       </div>
@@ -199,7 +199,7 @@ export function OpticaPedidoDetalle({ inicial }: { inicial: Pedido }) {
             if (!paso) return;
             void ejecutar(
               () => api.post<Pedido>(`/optica/pedidos/${pedido.id}/estado`, { estado: paso.estado, nota: nota.trim() || null, numeroSeguimiento: seguimiento.trim() || null }),
-              `Pedido ${ESTADO_PEDIDO_LABEL[paso.estado].toLowerCase()}. Avisamos al cliente.`,
+              `Pedido ${labelEstadoPedido(paso.estado, pedido.entrega.modalidad).toLowerCase()}. Avisamos al cliente.`,
             );
           }}
         >

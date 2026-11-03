@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Badge, EmptyState, Input, PageHeader } from '@/components/admin/ui';
 import { FilterSelect, Pagination, SearchInput, Table, Td, Th, Toolbar, Tr, useQueryParams } from '@/components/admin/table';
 import { LABELS, formatFecha, formatPrecio } from '@/lib/format';
-import { ESTADO_PEDIDO_LABEL, estadoPedidoTone } from '@/lib/pedidos';
+import { ESTADO_PEDIDO_LABEL, estadoPedidoTone, labelEstadoPedido } from '@/lib/pedidos';
 import type { EstadoPedido, PedidoOpticaFila } from '@/lib/pedidos';
 import { MODALIDAD_LABEL } from '@/lib/tienda/checkout';
 import type { Paged } from '@/lib/types';
@@ -96,7 +96,7 @@ export function OpticaPedidosTable({ data }: { data: Paged<PedidoOpticaFila> & {
                       {p.cliente.telefono && <p className="text-xs text-gris-medio">{p.cliente.telefono}</p>}
                     </Td>
                     <Td>
-                      <Badge tone={estadoPedidoTone(p.estado)}>{ESTADO_PEDIDO_LABEL[p.estado]}</Badge>
+                      <Badge tone={estadoPedidoTone(p.estado)}>{labelEstadoPedido(p.estado, p.modalidad)}</Badge>
                       {p.estado === 'ASIGNADO' && p.aceptarAntesDe && (
                         <span className={`mt-1 block text-xs ${vencido ? 'text-carey' : 'text-gris-medio'}`}>
                           {vencido ? 'Plazo vencido' : `Aceptar antes de ${formatFecha(p.aceptarAntesDe, true)}`}

@@ -17,6 +17,7 @@ import {
   TIPO_SOLICITUD_LABEL,
   estadoPagoTone,
   estadoPedidoTone,
+  labelEstadoPedido,
 } from '@/lib/pedidos';
 import type { PedidoAdmin, Solicitud } from '@/lib/pedidos';
 import { ESTADO_PAGO_LABEL, METODO_PAGO_LABEL } from '@/lib/tienda/checkout';
@@ -43,14 +44,14 @@ export function PedidoDetalle({ inicial, esAdmin }: { inicial: PedidoAdmin; esAd
   }, [pedido.id, router]);
 
   /** Ejecuta una acción contra la API y recarga el detalle. */
-  async function ejecutar(fn: () => Promise<unknown>, okMsg: string) {
+  async function ejecutar(fn: () => Promise<unknown>, okMsg: string | ((resultado: unknown) => string)) {
     setBusy(true);
     setError(null);
     setFieldErrors({});
     try {
-      await fn();
+      const resultado = await fn();
       await recargar();
-      toast.ok(okMsg);
+      toast.ok(typeof okMsg === 'function' ? okMsg(resultado) : okMsg);
       setAccion(null);
       setSolicitudSel(null);
       return true;
@@ -92,7 +93,18 @@ export function PedidoDetalle({ inicial, esAdmin }: { inicial: PedidoAdmin; esAd
           <>
             {pagoPendienteTransferencia && (
               <>
-                <Btn onClick={() => ejecutar(() => api.post(`/admin/pedidos/${pedido.id}/pago/aprobar`, {}), 'Pago confirmado: el pedido se asignó a una óptica')} loading={busy}>
+                <Btn
+                  onClick={() =>
+                    ejecutar(
+                      () => api.post<PedidoAdmin>(`/admin/pedidos/${pedido.id}/pago/aprobar`, {}),
+                      (r) =>
+                        (r as PedidoAdmin).entrega.optica
+                          ? `Pago confirmado: el pedido se asignó a ${(r as PedidoAdmin).entrega.optica!.nombre}`
+                          : 'Pago confirmado, pero ninguna óptica cubre la dirección: asignalo a mano',
+                    )
+                  }
+                  loading={busy}
+                >
                   Confirmar transferencia
                 </Btn>
                 <Btn variant="danger" onClick={() => ejecutar(() => api.post(`/admin/pedidos/${pedido.id}/pago/rechazar`, {}), 'Pago rechazado')} loading={busy}>
@@ -128,7 +140,7 @@ export function PedidoDetalle({ inicial, esAdmin }: { inicial: PedidoAdmin; esAd
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Badge tone={estadoPedidoTone(pedido.estado)} className="px-3 py-1 text-sm">{ESTADO_PEDIDO_LABEL[pedido.estado]}</Badge>
+        <Badge tone={estadoPedidoTone(pedido.estado)} className="px-3 py-1 text-sm">{labelEstadoPedido(pedido.estado, pedido.entrega.modalidad)}</Badge>
         <Badge tone={estadoPagoTone(pedido.estadoPago)} className="px-3 py-1 text-sm">Pago {ESTADO_PAGO_LABEL[pedido.estadoPago].toLowerCase()}</Badge>
         {pedido.entrega.optica ? (
           <Badge tone="neutral" className="px-3 py-1 text-sm">{pedido.entrega.optica.nombre}</Badge>
@@ -158,7 +170,7 @@ export function PedidoDetalle({ inicial, esAdmin }: { inicial: PedidoAdmin; esAd
               </Btn>
             }
           >
-            <Timeline eventos={pedido.eventos ?? []} />
+            <Timeline eventos={pedido.eventos ?? []} modalidad={pedido.entrega.modalidad} />
           </Card>
         </div>
 

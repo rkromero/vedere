@@ -47,6 +47,12 @@ export const ESTADO_PEDIDO_LABEL: Record<EstadoPedido, string> = {
   DEVUELTO: 'Devuelto',
 };
 
+/** Etiqueta del estado según la modalidad: un pedido con envío a domicilio queda "listo para despachar", no "para retirar". */
+export function labelEstadoPedido(estado: EstadoPedido, modalidad?: Modalidad | null): string {
+  if (estado === 'LISTO' && modalidad === 'ENVIO_DOMICILIO') return 'Listo para despachar';
+  return ESTADO_PEDIDO_LABEL[estado];
+}
+
 export function estadoPedidoTone(estado: string): BadgeTone {
   switch (estado) {
     case 'ENTREGADO':

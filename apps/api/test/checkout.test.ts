@@ -21,9 +21,23 @@ describe.skipIf(!hasDb)('checkout (integración)', () => {
 
   /** Simula la API de Mercado Pago: preferencias y consulta de pagos. */
   const pagosMP = new Map<string, { status: string; external_reference: string; transaction_amount: number }>();
+  /** Reembolsos pedidos a MP (POST /v1/payments/:id/refunds) y la respuesta que simula MP para el próximo. */
+  const refundsMP: Array<{ paymentId: string; body: Record<string, unknown>; idempotencyKey: string | null }> = [];
+  let proximoRefund: { status: string } = { status: 'approved' };
   function stubMP() {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const ref = /^https:\/\/api\.mercadopago\.com\/v1\/payments\/(\d+)\/refunds$/.exec(url);
+      if (ref && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const headers = new Headers(init.headers);
+        refundsMP.push({ paymentId: ref[1]!, body, idempotencyKey: headers.get('x-idempotency-key') });
+        const pago = pagosMP.get(ref[1]!);
+        return new Response(
+          JSON.stringify({ id: 9000 + refundsMP.length, payment_id: Number(ref[1]), amount: body.amount ?? pago?.transaction_amount, status: proximoRefund.status }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (url.startsWith('https://api.mercadopago.com/checkout/preferences')) {
         const body = JSON.parse(String(init?.body)) as { external_reference: string };
         return new Response(
@@ -329,6 +343,73 @@ describe.skipIf(!hasDb)('checkout (integración)', () => {
       payload: { items: [{ varianteId: ids.solB, cantidad: 1 }], cupon: 'DIEZ', email: datos.email },
     });
     expect(otra.json().cuponError).toMatch(/máximo de veces/);
+  });
+
+  it('reembolso por Mercado Pago: parcial y total contra POST /v1/payments/:id/refunds, con idempotency key; MP rechaza → 502', async () => {
+    stubMP();
+    const pedido = await prisma.pedido.findFirstOrThrow({ where: { numero: 'VD-10001' }, include: { pagos: true } });
+    expect(pedido.estadoPago).toBe('APROBADO');
+    expect(pedido.pagos.find((x) => x.proveedor === 'mercadopago' && x.estado === 'APROBADO')?.externoId).toBe('5001');
+
+    // Parcial: manda `amount` a MP y registra el reembolso con el id externo de MP.
+    const parcial = await app.inject({
+      method: 'POST',
+      url: `/admin/pedidos/${pedido.id}/reembolsar`,
+      cookies: staffCookie,
+      payload: { monto: 19000, motivo: 'Descuento por demora en la entrega' },
+    });
+    expect(parcial.statusCode).toBe(200);
+    expect(refundsMP).toHaveLength(1);
+    expect(refundsMP[0]).toMatchObject({ paymentId: '5001', body: { amount: 19000 }, idempotencyKey: `ref-${pedido.id}-1-1900000` });
+    let p = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { reembolsos: true, eventos: true } });
+    expect(Number(p.reembolsado)).toBe(19000);
+    expect(p.estadoPago).toBe('APROBADO');
+    expect(p.reembolsos).toHaveLength(1);
+    expect(p.reembolsos[0]).toMatchObject({ proveedor: 'mercadopago', externoId: '9001', estado: 'APROBADO' });
+    expect(Number(p.reembolsos[0]!.monto)).toBe(19000);
+    expect(p.eventos.some((e) => e.tipo === 'REEMBOLSO' && /parcial de \$19\.000 \(mercadopago #9001\)/.test(e.nota ?? ''))).toBe(true);
+    expect(await prisma.emailEnviado.count({ where: { pedidoId: pedido.id, tipo: 'REEMBOLSO' } })).toBe(1);
+
+    // MP rechaza el refund → 502 y no se registra nada.
+    proximoRefund = { status: 'rejected' };
+    const rechazado = await app.inject({
+      method: 'POST',
+      url: `/admin/pedidos/${pedido.id}/reembolsar`,
+      cookies: staffCookie,
+      payload: { monto: 1000, motivo: 'Prueba' },
+    });
+    expect(rechazado.statusCode).toBe(502);
+    expect(rechazado.json().error.code).toBe('MP_ERROR');
+    expect(await prisma.reembolso.count({ where: { pedidoId: pedido.id } })).toBe(1);
+    proximoRefund = { status: 'approved' };
+
+    // Más que lo pendiente → 400 con el campo.
+    const excedido = await app.inject({
+      method: 'POST',
+      url: `/admin/pedidos/${pedido.id}/reembolsar`,
+      cookies: staffCookie,
+      payload: { monto: 170001, motivo: 'Prueba' },
+    });
+    expect(excedido.statusCode).toBe(400);
+
+    // Total (monto vacío = resto pendiente): MP recibe `amount` del resto; el pago queda REEMBOLSADO.
+    const total = await app.inject({
+      method: 'POST',
+      url: `/admin/pedidos/${pedido.id}/reembolsar`,
+      cookies: staffCookie,
+      payload: { motivo: 'Devolución del pedido completo' },
+    });
+    expect(total.statusCode).toBe(200);
+    expect(total.json().estadoPago).toBe('REEMBOLSADO');
+    expect(refundsMP).toHaveLength(3);
+    expect(refundsMP[2]).toMatchObject({ paymentId: '5001', body: { amount: 170000 }, idempotencyKey: `ref-${pedido.id}-2-17000000` });
+    p = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { reembolsos: true } });
+    expect(Number(p.reembolsado)).toBe(189000);
+    expect(p.reembolsos.map((r) => r.externoId).sort()).toEqual(['9001', '9003']);
+
+    // Ya no queda nada por reembolsar.
+    const otra = await app.inject({ method: 'POST', url: `/admin/pedidos/${pedido.id}/reembolsar`, cookies: staffCookie, payload: { motivo: 'x' } });
+    expect(otra.statusCode).toBe(400);
   });
 
   it('la reserva vencida se libera y el stock vuelve a estar disponible', async () => {
