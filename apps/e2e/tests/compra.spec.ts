@@ -15,6 +15,7 @@ test.describe.serial('Compra de punta a punta', () => {
     await page.getByTestId('registro-nombre').fill('Cliente E2E');
     await page.getByTestId('registro-email').fill(email);
     await page.getByTestId('registro-password').fill(password);
+    await page.getByRole('checkbox', { name: /acepto los t/i }).check();
     await page.getByTestId('registro-submit').click();
     await page.waitForURL(/\/mi-cuenta/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/cliente/i);
