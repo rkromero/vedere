@@ -223,7 +223,11 @@ describe.skipIf(!hasDb)('sitio (integración)', () => {
     expect(pub.json().rivedere).toEqual({ meses: 18, descuentoPct: 20 });
     expect(pub.json().carritoAbandonado).toBe(false);
     const get = await ctx.inject('GET', '/admin/config-tienda', ctx.staffCookie);
-    expect(get.json().entorno).toMatchObject({ googleLogin: false, metaCapi: false, ga4Mp: false, cronSecret: false });
+    // Flags del entorno: dependen de las variables presentes (en CI no hay ninguna; en local puede haber CRON_SECRET).
+    const entorno = get.json().entorno as Record<string, unknown>;
+    for (const k of ['googleLogin', 'metaCapi', 'ga4Mp', 'sentry', 'cronSecret']) expect(typeof entorno[k]).toBe('boolean');
+    expect(entorno.cronSecret).toBe(!!process.env.CRON_SECRET);
+    expect(entorno.googleLogin).toBe(!!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET));
     await ctx.inject('PUT', '/admin/config-tienda', ctx.staffCookie, { carritoAbandonadoHabilitado: true });
   });
 });
