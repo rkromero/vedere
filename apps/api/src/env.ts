@@ -47,6 +47,19 @@ const envSchema = z.object({
   R2_PUBLIC_URL: z.preprocess(emptyToUndefined, z.url().optional()),
   // Endpoint S3 alternativo (MinIO, tests). Si falta se usa https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
   R2_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
+
+  // Mercado Pago (Checkout Pro). Sin MP_ACCESS_TOKEN la integración queda apagada (bandera MP_ENABLED).
+  MP_ACCESS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+  MP_WEBHOOK_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+  MP_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  // Minutos que se reserva el stock mientras se paga con Mercado Pago.
+  RESERVA_STOCK_MINUTOS: z.coerce.number().int().positive().default(30),
+
+  // Google Places / Geocoding (autocompletado y normalización de direcciones). Opcional.
+  GOOGLE_MAPS_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

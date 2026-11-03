@@ -22,6 +22,8 @@ declare module 'fastify' {
     authenticate: RouteGuard;
     /** Exige access token válido y que el rol esté en la lista. */
     requireRole: (...roles: Rol[]) => RouteGuard;
+    /** Carga request.user si hay token válido; si no, sigue como anónimo (request.user queda undefined). */
+    optionalAuthenticate: RouteGuard;
   }
 }
 
@@ -42,6 +44,13 @@ export default fp(
     };
 
     app.decorate('authenticate', authenticate);
+    app.decorate('optionalAuthenticate', async (request: FastifyRequest) => {
+      try {
+        await request.jwtVerify();
+      } catch {
+        /* anónimo */
+      }
+    });
     app.decorate('requireRole', (...roles: Rol[]): RouteGuard => {
       return async (request, reply) => {
         await authenticate(request, reply);

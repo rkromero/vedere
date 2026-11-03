@@ -134,16 +134,13 @@ function Cupon() {
 
   if (cupon) {
     const aplica = !cupon.minimoCompra || totales.subtotal >= cupon.minimoCompra;
+    const motivo = totales.cuponError ?? (!aplica ? `Aplica desde ${formatARS(cupon.minimoCompra ?? 0)}.` : null);
     return (
       <div className="font-text flex items-center justify-between gap-3 rounded-xl bg-vetro/25 px-3 py-2 text-sm">
         <p>
           <span className="font-semibold">{cupon.codigo}</span>
           {cupon.descripcion && <span className="text-gris-texto"> · {cupon.descripcion}</span>}
-          {!aplica && (
-            <span className="block text-xs text-carey">
-              Aplica desde {formatARS(cupon.minimoCompra ?? 0)}.
-            </span>
-          )}
+          {motivo && <span className="block text-xs text-carey">{motivo}</span>}
         </p>
         <button type="button" onClick={quitarCupon} className="shrink-0 text-sm underline underline-offset-4">
           Quitar
@@ -216,7 +213,9 @@ function ProgresoEnvio() {
 export function CartDrawer() {
   const { abierto, cerrar, items, totales, hidratado } = useCart();
   const vacio = items.length === 0;
-  const nCuotas = site.comercial.cuotas;
+  const textoCuotas = totales.cuotas
+    ? `${totales.cuotas.cantidad} cuotas sin interés de ${formatARS(totales.cuotas.valorCuota)}`
+    : cuotas(totales.total, site.comercial.cuotas).texto;
 
   return (
     <Drawer
@@ -238,12 +237,12 @@ export function CartDrawer() {
                 <dt className="text-gris-texto">Subtotal</dt>
                 <dd>{formatARS(totales.subtotal)}</dd>
               </div>
-              {totales.descuento > 0 && (
-                <div className="flex justify-between text-noche">
-                  <dt>Descuento</dt>
-                  <dd>−{formatARS(totales.descuento)}</dd>
+              {totales.descuentos.map((d) => (
+                <div key={`${d.tipo}-${d.id ?? d.codigo ?? d.descripcion}`} className="flex justify-between gap-3 text-noche">
+                  <dt className="truncate">{d.descripcion}</dt>
+                  <dd className="shrink-0">−{formatARS(d.monto)}</dd>
                 </div>
-              )}
+              ))}
               <div className="flex justify-between">
                 <dt className="text-gris-texto">Envío</dt>
                 <dd>{totales.envioGratis ? 'Gratis' : 'Se calcula al finalizar'}</dd>
@@ -253,9 +252,12 @@ export function CartDrawer() {
                 <dd className="text-lg font-semibold">{formatARS(totales.total)}</dd>
               </div>
             </dl>
-            <p className="text-sm text-gris-texto">
-              {cuotas(totales.total, nCuotas).texto} con tarjetas bancarias.
-            </p>
+            {totales.ahorro > 0 && (
+              <p className="rounded-xl bg-sol/30 px-3 py-2 text-sm font-medium">
+                Ahorrás {formatARS(totales.ahorro)} en esta compra
+              </p>
+            )}
+            <p className="text-sm text-gris-texto">{textoCuotas} con tarjetas bancarias.</p>
             <Link href="/checkout" className={buttonClasses('primary', 'lg', 'w-full')}>
               Iniciar compra
             </Link>

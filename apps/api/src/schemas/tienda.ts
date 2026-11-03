@@ -72,9 +72,15 @@ export const cuponBase = z.object({
   valor: z.number().positive('El valor debe ser mayor a 0'),
   minimoCompra: z.number().nonnegative().nullable().optional(),
   usosMax: z.number().int().positive().nullable().optional(),
+  usosMaxPorCliente: z.number().int().positive().nullable().optional(),
+  acumulable: z.boolean().default(false),
   activo: z.boolean().default(true),
   vigenciaDesde: z.coerce.date().nullable().optional(),
   vigenciaHasta: z.coerce.date().nullable().optional(),
+  /// Alcance: ids de categorías y/o colecciones (vacío = todo el catálogo).
+  categoriaIds: z.array(z.string().min(1)).max(50).default([]),
+  coleccionIds: z.array(z.string().min(1)).max(50).default([]),
+  creadorId: z.string().min(1).nullable().optional(),
 });
 export const cuponInput = cuponBase;
 export const cuponUpdate = partialSinDefaults(cuponBase.shape);

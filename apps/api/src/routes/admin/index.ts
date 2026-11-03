@@ -1,4 +1,5 @@
-// Backoffice API. Catálogo, promos, ópticas, cupones y bandeja: ADMIN y OPERADOR. Usuarios y ping: sólo ADMIN.
+// Backoffice API. Catálogo, promos, ópticas, cupones, bandeja, pedidos, promociones, creadores y config: ADMIN y OPERADOR.
+// Usuarios, ping y edición de la configuración comercial: sólo ADMIN.
 import type { FastifyPluginAsync } from 'fastify';
 import marcasRoutes from './marcas.js';
 import categoriasRoutes from './categorias.js';
@@ -13,6 +14,10 @@ import promosRoutes from './promos.js';
 import opticasRoutes from './opticas.js';
 import cuponesRoutes from './cupones.js';
 import mensajesRoutes from './mensajes.js';
+import pedidosRoutes from './pedidos.js';
+import promocionesRoutes from './promociones.js';
+import creadoresRoutes from './creadores.js';
+import configRoutes from './config.js';
 
 const adminRoutes: FastifyPluginAsync = async (app) => {
   // --- Catálogo y dashboard: staff (ADMIN u OPERADOR) ---
@@ -30,6 +35,10 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     await staff.register(opticasRoutes, { prefix: '/opticas' });
     await staff.register(cuponesRoutes, { prefix: '/cupones' });
     await staff.register(mensajesRoutes);
+    await staff.register(pedidosRoutes, { prefix: '/pedidos' });
+    await staff.register(promocionesRoutes, { prefix: '/promociones' });
+    await staff.register(creadoresRoutes, { prefix: '/creadores' });
+    await staff.register(configRoutes); // GET /config-tienda (staff), PUT sólo ADMIN
   });
 
   // --- Sólo ADMIN ---

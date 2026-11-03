@@ -722,11 +722,69 @@ async function seedTienda(adminId: string) {
   );
 }
 
+// ---------- Checkout (prompt 4): configuración comercial y reglas de promoción ----------
+
+async function seedCheckout(adminId: string) {
+  const audit = { createdById: adminId, updatedById: adminId };
+
+  // Fila única de configuración: sólo se crea si no existe (lo que edita el admin no se pisa).
+  await prisma.configTienda.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: {
+      id: 'default',
+      transferenciaHabilitada: true,
+      descuentoTransferencia: 10,
+      transferenciaHorasReserva: 48,
+      mpHabilitado: true,
+      mpBilleteraHabilitada: false,
+      cuotasGeneral: 6,
+      cuotasPorLinea: { MULTIFOCAL: 12 },
+      costoEnvio: 0,
+      updatedById: adminId,
+    },
+  });
+
+  const promociones = await prisma.promocion.count();
+  if (promociones === 0) {
+    await prisma.promocion.createMany({
+      data: [
+        {
+          nombre: 'Envío gratis desde $80.000',
+          tipo: 'ENVIO_GRATIS',
+          montoMinimo: 80000,
+          activa: true,
+          prioridad: 0,
+          ...audit,
+        },
+        {
+          nombre: 'Segundo par al 50 % en Recetados',
+          tipo: 'SEGUNDO_50',
+          linea: 'RECETADO',
+          activa: false,
+          prioridad: 1,
+          ...audit,
+        },
+        {
+          nombre: '2x1 en Sol',
+          tipo: 'DOS_POR_UNO',
+          linea: 'SOL',
+          activa: false,
+          prioridad: 2,
+          ...audit,
+        },
+      ],
+    });
+  }
+  console.log('[seed] Checkout: configuración de tienda y reglas de promoción');
+}
+
 async function main() {
   const admin = await seedAdmin();
   if (process.env.SEED_CATALOGO !== 'false') await seedCatalogo(admin.id);
   // Promos, ópticas socias y cupones: idempotente, se puede correr solo con SEED_CATALOGO=false.
   if (process.env.SEED_TIENDA !== 'false') await seedTienda(admin.id);
+  if (process.env.SEED_TIENDA !== 'false') await seedCheckout(admin.id);
 }
 
 main()

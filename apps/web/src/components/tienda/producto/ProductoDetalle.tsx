@@ -20,6 +20,7 @@ import { site } from '@/config/site';
 import { LABELS } from '@/lib/format';
 import type { Producto } from '@/lib/types';
 import { useCart } from '@/lib/tienda/cart';
+import { useCuotas } from '@/lib/tienda/comercial';
 import { varianteInicial, LINEA_SLUG } from '@/lib/tienda/producto';
 import { registrarReciente } from '@/lib/tienda/recientes';
 import { AvisameForm } from './AvisameForm';
@@ -61,7 +62,7 @@ export function ProductoDetalle({
   const sinStock = !variante || variante.stock <= 0;
   const pocoStock = !!variante && variante.stock > 0 && variante.stock <= 3;
   const esRecetado = producto.permiteReceta;
-  const nCuotas = site.comercial.cuotas;
+  const nCuotas = useCuotas(producto.linea);
   const { calibreMm, puenteMm, varillaMm } = producto.medidas;
   const tieneMedidas = !!(calibreMm || puenteMm || varillaMm);
 

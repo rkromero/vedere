@@ -3,6 +3,8 @@
 import { site } from '@/config/site';
 import type { Producto, Paged } from '@/lib/types';
 import type { Coleccion, Filtros, Optica, PromoMensaje, Sugerencias } from './types';
+import { CONFIG_FALLBACK } from './checkout';
+import type { ConfigCheckout } from './checkout';
 
 const REVALIDATE = 60;
 
@@ -43,6 +45,10 @@ export async function publicApiOr<T>(path: string, fallback: T, opts: Opts = {})
 }
 
 const VACIO: Paged<Producto> = { items: [], page: 1, pageSize: 24, total: 0, totalPages: 1 };
+
+/** Configuración comercial pública (medios de pago, cuotas por línea, envío). */
+export const checkoutConfig = () =>
+  publicApiOr<ConfigCheckout>('/checkout/config', CONFIG_FALLBACK, { tags: ['config'] });
 
 export const catalogo = {
   productos: (query: string) =>

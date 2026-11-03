@@ -1,4 +1,5 @@
-// ABM de cupones de descuento (staff).
+// ABM de cupones de descuento (staff): porcentaje o monto, mínimo, vigencia, usos totales y por
+// cliente, alcance por categorías/colecciones y creador asociado.
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@vedere/db';
@@ -12,11 +13,19 @@ import { cuponInput, cuponUpdate } from '../../schemas/tienda.js';
 const listQuery = paginationQuery.extend({
   q: z.string().trim().max(40).optional(),
   activo: z.enum(['true', 'false']).optional(),
+  creadorId: z.string().optional(),
 });
 
-type CuponRow = Prisma.CuponGetPayload<object>;
+const include = {
+  categorias: { select: { id: true, nombre: true, slug: true } },
+  colecciones: { select: { id: true, nombre: true, slug: true } },
+  creador: { select: { id: true, nombre: true, slug: true } },
+} satisfies Prisma.CuponInclude;
+type CuponRow = Prisma.CuponGetPayload<{ include: typeof include }>;
+
 export function serializeCupon(c: CuponRow) {
-  return { ...c, valor: dec(c.valor) ?? 0, minimoCompra: dec(c.minimoCompra) };
+  const { createdById: _c, updatedById: _u, ...rest } = c;
+  return { ...rest, valor: dec(c.valor) ?? 0, minimoCompra: dec(c.minimoCompra) };
 }
 
 function validarVigencia(desde?: Date | null, hasta?: Date | null) {
@@ -33,16 +42,32 @@ function validarPorcentaje(tipo: string, valor: number) {
   }
 }
 
+async function validarRelaciones(body: { categoriaIds?: string[]; coleccionIds?: string[]; creadorId?: string | null }) {
+  if (body.categoriaIds?.length) {
+    const n = await prisma.categoria.count({ where: { id: { in: body.categoriaIds } } });
+    if (n !== body.categoriaIds.length) throw Errors.badRequest('Alguna categoría no existe', [{ path: 'categoriaIds', message: 'Categoría inválida' }]);
+  }
+  if (body.coleccionIds?.length) {
+    const n = await prisma.coleccion.count({ where: { id: { in: body.coleccionIds } } });
+    if (n !== body.coleccionIds.length) throw Errors.badRequest('Alguna colección no existe', [{ path: 'coleccionIds', message: 'Colección inválida' }]);
+  }
+  if (body.creadorId) {
+    const c = await prisma.creador.findUnique({ where: { id: body.creadorId } });
+    if (!c) throw Errors.badRequest('Creador inexistente', [{ path: 'creadorId', message: 'Elegí un creador válido' }]);
+  }
+}
+
 const cuponesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (request) => {
     const q = parse(listQuery, request.query);
     const where: Prisma.CuponWhereInput = {
       ...(q.q ? { codigo: { contains: q.q.toUpperCase() } } : {}),
       ...(q.activo ? { activo: q.activo === 'true' } : {}),
+      ...(q.creadorId ? { creadorId: q.creadorId } : {}),
     };
     const [total, items] = await Promise.all([
       prisma.cupon.count({ where }),
-      prisma.cupon.findMany({ where, orderBy: { createdAt: 'desc' }, ...paginate(q) }),
+      prisma.cupon.findMany({ where, orderBy: { createdAt: 'desc' }, ...paginate(q), include }),
     ]);
     return pageResponse(items.map(serializeCupon), total, q);
   });
@@ -51,8 +76,17 @@ const cuponesRoutes: FastifyPluginAsync = async (app) => {
     const body = parse(cuponInput, request.body);
     validarVigencia(body.vigenciaDesde, body.vigenciaHasta);
     validarPorcentaje(body.tipo, body.valor);
+    await validarRelaciones(body);
+    const { categoriaIds, coleccionIds, ...data } = body;
     const c = await prisma.cupon.create({
-      data: { ...body, createdById: request.user.sub, updatedById: request.user.sub },
+      data: {
+        ...data,
+        categorias: { connect: categoriaIds.map((id) => ({ id })) },
+        colecciones: { connect: coleccionIds.map((id) => ({ id })) },
+        createdById: request.user.sub,
+        updatedById: request.user.sub,
+      },
+      include,
     });
     return reply.status(201).send(serializeCupon(c));
   });
@@ -66,9 +100,17 @@ const cuponesRoutes: FastifyPluginAsync = async (app) => {
       body.vigenciaHasta ?? existing.vigenciaHasta,
     );
     validarPorcentaje(body.tipo ?? existing.tipo, body.valor ?? dec(existing.valor) ?? 0);
+    await validarRelaciones(body);
+    const { categoriaIds, coleccionIds, ...data } = body;
     const c = await prisma.cupon.update({
       where: { id: existing.id },
-      data: { ...body, updatedById: request.user.sub },
+      data: {
+        ...data,
+        ...(categoriaIds ? { categorias: { set: categoriaIds.map((id) => ({ id })) } } : {}),
+        ...(coleccionIds ? { colecciones: { set: coleccionIds.map((id) => ({ id })) } } : {}),
+        updatedById: request.user.sub,
+      },
+      include,
     });
     return serializeCupon(c);
   });

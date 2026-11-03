@@ -1,5 +1,6 @@
 // Esquema de Vedere. Prompt 1: usuarios y sesiones. Prompt 2: catálogo (marcas, categorías, colecciones, productos, variantes, imágenes).
 // Prompt 3: tienda pública (promos, ópticas socias, cupones, newsletter, avisos de stock, contacto, carrito sincronizado).
+// Prompt 4: checkout (pedidos, pagos, reservas de stock, recetas), promociones, creadores y configuración de tienda.
 
 generator client {
   provider = "prisma-client-js"
@@ -34,6 +35,8 @@ model User {
 
   refreshTokens RefreshToken[]
   carrito       Carrito?
+  pedidos       Pedido[]
+  recetas       Receta[]
 
   @@index([rol])
   @@map("users")
@@ -135,6 +138,7 @@ model Categoria {
   updatedById String?     @map("updated_by_id")
 
   productos Producto[]
+  cupones   Cupon[]
 
   @@index([padreId])
   @@map("categorias")
@@ -154,7 +158,9 @@ model Coleccion {
   createdById   String?   @map("created_by_id")
   updatedById   String?   @map("updated_by_id")
 
-  productos Producto[]
+  productos   Producto[]
+  cupones     Cupon[]
+  promociones Promocion[]
 
   @@map("colecciones")
 }
@@ -193,7 +199,8 @@ model Producto {
   createdById     String?        @map("created_by_id")
   updatedById     String?        @map("updated_by_id")
 
-  variantes Variante[]
+  variantes   Variante[]
+  pedidoItems PedidoItem[]
 
   @@index([estado, linea])
   @@index([marcaId])
@@ -224,6 +231,8 @@ model Variante {
 
   imagenes    ImagenVariante[]
   avisosStock AvisoStock[]
+  pedidoItems PedidoItem[]
+  reservas    ReservaStock[]
 
   @@index([productoId])
   @@index([colorArmazon])
@@ -291,6 +300,8 @@ model Optica {
   createdById  String?  @map("created_by_id")
   updatedById  String?  @map("updated_by_id")
 
+  pedidos Pedido[]
+
   @@index([activa, provincia])
   @@index([codigoPostal])
   @@map("opticas")
@@ -301,24 +312,36 @@ enum TipoCupon {
   MONTO
 }
 
-/// Cupón de descuento (se valida en el carrito; se consume en el checkout, prompt 4).
+/// Cupón de descuento. Se valida en el carrito y se consume al crear el pedido (CuponUso).
+/// Si tiene categorías o colecciones, el descuento se calcula sólo sobre los ítems de ese alcance.
 model Cupon {
-  id            String    @id @default(cuid())
-  codigo        String    @unique
-  descripcion   String?
-  tipo          TipoCupon
-  valor         Decimal   @db.Decimal(12, 2)
-  minimoCompra  Decimal?  @map("minimo_compra") @db.Decimal(12, 2)
-  usosMax       Int?      @map("usos_max")
-  usos          Int       @default(0)
-  activo        Boolean   @default(true)
-  vigenciaDesde DateTime? @map("vigencia_desde")
-  vigenciaHasta DateTime? @map("vigencia_hasta")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  createdById   String?   @map("created_by_id")
-  updatedById   String?   @map("updated_by_id")
+  id                String      @id @default(cuid())
+  codigo            String      @unique
+  descripcion       String?
+  tipo              TipoCupon
+  valor             Decimal     @db.Decimal(12, 2)
+  minimoCompra      Decimal?    @map("minimo_compra") @db.Decimal(12, 2)
+  usosMax           Int?        @map("usos_max")
+  /// Usos máximos por cliente (se cuenta por email).
+  usosMaxPorCliente Int?        @map("usos_max_por_cliente")
+  usos              Int         @default(0)
+  /// Si es false (default) no se combina con otras promos: gana el descuento mayor.
+  acumulable        Boolean     @default(false)
+  activo            Boolean     @default(true)
+  vigenciaDesde     DateTime?   @map("vigencia_desde")
+  vigenciaHasta     DateTime?   @map("vigencia_hasta")
+  /// Código de creador: el cupón pertenece a un creador y sus ventas se reportan por código.
+  creadorId         String?     @map("creador_id")
+  creador           Creador?    @relation(fields: [creadorId], references: [id], onDelete: SetNull)
+  categorias        Categoria[]
+  colecciones       Coleccion[]
+  usosRegistro      CuponUso[]
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  createdById       String?     @map("created_by_id")
+  updatedById       String?     @map("updated_by_id")
 
+  @@index([creadorId])
   @@map("cupones")
 }
 
@@ -380,4 +403,313 @@ model Carrito {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("carritos")
+}
+
+// ============================================================
+// Checkout, pagos y promociones (prompt 4)
+// ============================================================
+
+/// Creador de contenido con código propio (cupón asociado). Reporte de ventas por código.
+model Creador {
+  id          String   @id @default(cuid())
+  nombre      String
+  slug        String   @unique
+  instagram   String?
+  email       String?
+  /// Comisión informativa (% sobre ventas con su código).
+  comision    Decimal? @db.Decimal(5, 2)
+  activo      Boolean  @default(true)
+  cupones     Cupon[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  @@map("creadores")
+}
+
+enum TipoPromocion {
+  DOS_POR_UNO
+  SEGUNDO_50
+  ENVIO_GRATIS
+}
+
+/// Regla automática de promoción. Alcance: una línea o una colección (vacío = toda la tienda).
+/// Las promos no se acumulan entre sí ni con cupones salvo `acumulable`; el envío gratis es independiente.
+model Promocion {
+  id            String        @id @default(cuid())
+  nombre        String
+  tipo          TipoPromocion
+  linea         Linea?
+  coleccionId   String?       @map("coleccion_id")
+  coleccion     Coleccion?    @relation(fields: [coleccionId], references: [id], onDelete: Cascade)
+  /// Sólo ENVIO_GRATIS: monto mínimo de compra (después de descuentos).
+  montoMinimo   Decimal?      @map("monto_minimo") @db.Decimal(12, 2)
+  acumulable    Boolean       @default(false)
+  prioridad     Int           @default(0)
+  activa        Boolean       @default(true)
+  vigenciaDesde DateTime?     @map("vigencia_desde")
+  vigenciaHasta DateTime?     @map("vigencia_hasta")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  createdById   String?       @map("created_by_id")
+  updatedById   String?       @map("updated_by_id")
+
+  @@index([activa, tipo])
+  @@map("promociones")
+}
+
+/// Configuración comercial editable desde el admin (una sola fila, id "default").
+model ConfigTienda {
+  id                        String   @id @default("default")
+  /// Transferencia bancaria
+  transferenciaHabilitada   Boolean  @default(true) @map("transferencia_habilitada")
+  cbu                       String?
+  alias                     String?
+  titularCuenta             String?  @map("titular_cuenta")
+  banco                     String?
+  /// Descuento (%) por pagar con transferencia.
+  descuentoTransferencia    Decimal  @default(0) @map("descuento_transferencia") @db.Decimal(5, 2)
+  /// Horas que se mantiene reservado el stock de un pedido por transferencia.
+  transferenciaHorasReserva Int      @default(48) @map("transferencia_horas_reserva")
+  /// Mercado Pago (además necesita credenciales en el entorno)
+  mpHabilitado              Boolean  @default(true) @map("mp_habilitado")
+  mpBilleteraHabilitada     Boolean  @default(false) @map("mp_billetera_habilitada")
+  /// Cuotas sin interés: general y por línea ({"MULTIFOCAL": 12}).
+  cuotasGeneral             Int      @default(6) @map("cuotas_general")
+  cuotasPorLinea            Json     @default("{}") @map("cuotas_por_linea")
+  /// Envío a domicilio desde la óptica.
+  costoEnvio                Decimal  @default(0) @map("costo_envio") @db.Decimal(12, 2)
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+  updatedById               String?  @map("updated_by_id")
+
+  @@map("config_tienda")
+}
+
+enum ModoReceta {
+  VALORES
+  ARCHIVO
+  OPTICA
+}
+
+/// Receta óptica: valores cargados, archivo subido o "la mide la óptica". Se guarda en la cuenta.
+model Receta {
+  id            String     @id @default(cuid())
+  userId        String?    @map("user_id")
+  user          User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  modo          ModoReceta
+  odEsfera      Decimal?   @map("od_esfera") @db.Decimal(5, 2)
+  odCilindro    Decimal?   @map("od_cilindro") @db.Decimal(5, 2)
+  odEje         Int?       @map("od_eje")
+  oiEsfera      Decimal?   @map("oi_esfera") @db.Decimal(5, 2)
+  oiCilindro    Decimal?   @map("oi_cilindro") @db.Decimal(5, 2)
+  oiEje         Int?       @map("oi_eje")
+  adicion       Decimal?   @db.Decimal(4, 2)
+  /// Distancia pupilar (mm).
+  dp            Decimal?   @db.Decimal(4, 1)
+  archivoUrl    String?    @map("archivo_url")
+  archivoNombre String?    @map("archivo_nombre")
+  notas         String?
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  pedidos Pedido[]
+
+  @@index([userId])
+  @@map("recetas")
+}
+
+enum EstadoPedido {
+  PENDIENTE_PAGO
+  CONFIRMADO
+  EN_PREPARACION
+  LISTO
+  ENTREGADO
+  CANCELADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  REEMBOLSADO
+}
+
+enum MetodoPago {
+  MERCADO_PAGO
+  MERCADO_PAGO_BILLETERA
+  TRANSFERENCIA
+}
+
+enum ModalidadEntrega {
+  RETIRO_OPTICA
+  ENVIO_DOMICILIO
+}
+
+/// Pedido: número legible VD-10001 (secuencia pedidos_numero_seq), ítems con precio congelado,
+/// descuentos, receta, óptica asignada, dirección geocodificada, método y estado de pago.
+model Pedido {
+  id                String           @id @default(cuid())
+  numero            String           @unique
+  estado            EstadoPedido     @default(PENDIENTE_PAGO)
+  userId            String?          @map("user_id")
+  user              User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Datos de contacto (se guardan aunque haya cuenta: snapshot).
+  email             String
+  nombre            String
+  dni               String
+  telefono          String
+  /// Entrega
+  modalidad         ModalidadEntrega
+  opticaId          String?          @map("optica_id")
+  optica            Optica?          @relation(fields: [opticaId], references: [id], onDelete: SetNull)
+  direccion         String
+  piso              String?
+  localidad         String
+  provincia         String
+  codigoPostal      String           @map("codigo_postal")
+  lat               Float?
+  lng               Float?
+  placeId           String?          @map("place_id")
+  direccionCompleta String?          @map("direccion_completa")
+  /// Receta
+  recetaId          String?          @map("receta_id")
+  receta            Receta?          @relation(fields: [recetaId], references: [id], onDelete: SetNull)
+  /// Importes
+  subtotal          Decimal          @db.Decimal(12, 2)
+  descuentos        Decimal          @default(0) @db.Decimal(12, 2)
+  /// Detalle de descuentos aplicados [{tipo, codigo?, descripcion, monto}].
+  descuentosDetalle Json             @default("[]") @map("descuentos_detalle")
+  envio             Decimal          @default(0) @db.Decimal(12, 2)
+  total             Decimal          @db.Decimal(12, 2)
+  cuponCodigo       String?          @map("cupon_codigo")
+  /// Pago
+  metodoPago        MetodoPago       @map("metodo_pago")
+  estadoPago        EstadoPago       @default(PENDIENTE) @map("estado_pago")
+  cuotas            Int              @default(1)
+  pagadoEn          DateTime?        @map("pagado_en")
+  /// Stock descontado una sola vez (idempotencia del webhook).
+  stockDescontado   Boolean          @default(false) @map("stock_descontado")
+  reservaExpiraEn   DateTime?        @map("reserva_expira_en")
+  numeroFactura     String?          @map("numero_factura")
+  notas             String?
+  notasInternas     String?          @map("notas_internas")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  items    PedidoItem[]
+  pagos    Pago[]
+  reservas ReservaStock[]
+  cuponUso CuponUso?
+
+  @@index([estado, createdAt])
+  @@index([estadoPago])
+  @@index([userId])
+  @@index([email])
+  @@index([opticaId])
+  @@map("pedidos")
+}
+
+/// Ítem con precio congelado al momento de la compra.
+model PedidoItem {
+  id             String    @id @default(cuid())
+  pedidoId       String    @map("pedido_id")
+  pedido         Pedido    @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  varianteId     String?   @map("variante_id")
+  variante       Variante? @relation(fields: [varianteId], references: [id], onDelete: SetNull)
+  productoId     String?   @map("producto_id")
+  producto       Producto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  nombre         String
+  sku            String
+  color          String
+  imagen         String?
+  linea          Linea
+  precioUnitario Decimal   @map("precio_unitario") @db.Decimal(12, 2)
+  precioLista    Decimal?  @map("precio_lista") @db.Decimal(12, 2)
+  cantidad       Int
+  /// Descuento total de la línea (promos + cupón prorrateado).
+  descuento      Decimal   @default(0) @db.Decimal(12, 2)
+  total          Decimal   @db.Decimal(12, 2)
+  conReceta      Boolean   @default(false) @map("con_receta")
+
+  @@index([pedidoId])
+  @@index([varianteId])
+  @@map("pedido_items")
+}
+
+/// Intento de pago. externoId = id del pago en Mercado Pago (único por proveedor → webhook idempotente).
+model Pago {
+  id                  String     @id @default(cuid())
+  pedidoId            String     @map("pedido_id")
+  pedido              Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  metodo              MetodoPago
+  proveedor           String
+  externoId           String?    @map("externo_id")
+  preferenciaId       String?    @map("preferencia_id")
+  estado              EstadoPago @default(PENDIENTE)
+  monto               Decimal    @db.Decimal(12, 2)
+  detalle             Json?
+  comprobanteUrl      String?    @map("comprobante_url")
+  comprobanteNombre   String?    @map("comprobante_nombre")
+  comprobanteSubidoEn DateTime?  @map("comprobante_subido_en")
+  confirmadoPorId     String?    @map("confirmado_por_id")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  @@unique([proveedor, externoId])
+  @@index([pedidoId])
+  @@map("pagos")
+}
+
+enum EstadoReserva {
+  ACTIVA
+  CONSUMIDA
+  LIBERADA
+}
+
+/// Reserva de stock mientras se paga (30 min en Mercado Pago; configurable para transferencia).
+model ReservaStock {
+  id         String        @id @default(cuid())
+  pedidoId   String        @map("pedido_id")
+  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  varianteId String        @map("variante_id")
+  variante   Variante      @relation(fields: [varianteId], references: [id], onDelete: Cascade)
+  cantidad   Int
+  estado     EstadoReserva @default(ACTIVA)
+  expiraEn   DateTime      @map("expira_en")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  @@index([varianteId, estado])
+  @@index([estado, expiraEn])
+  @@map("reservas_stock")
+}
+
+/// Uso de un cupón en un pedido (para límites por cliente y reporte por creador).
+model CuponUso {
+  id        String   @id @default(cuid())
+  cuponId   String   @map("cupon_id")
+  cupon     Cupon    @relation(fields: [cuponId], references: [id], onDelete: Cascade)
+  pedidoId  String   @unique @map("pedido_id")
+  pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  email     String
+  monto     Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([cuponId, email])
+  @@map("cupon_usos")
+}
+
+/// Notificaciones recibidas de proveedores de pago (auditoría e idempotencia por evento).
+model EventoWebhook {
+  id          String    @id @default(cuid())
+  proveedor   String
+  eventoId    String    @map("evento_id")
+  tipo        String
+  payload     Json
+  procesadoEn DateTime? @map("procesado_en")
+  resultado   String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([proveedor, eventoId])
+  @@map("eventos_webhook")
 }

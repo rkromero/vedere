@@ -4,6 +4,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 import { Errors } from '../lib/errors.js';
+import { distanciaKm } from '../lib/geo.js';
 import { paginate, pageResponse, paginationQuery } from '../lib/pagination.js';
 import { dec, productoInclude, serializeProductoPublico } from '../lib/serialize.js';
 import { parse } from '../lib/validate.js';
@@ -36,18 +37,6 @@ function vigente(now: Date): Prisma.PromoMensajeWhereInput {
     OR: [{ vigenciaDesde: null }, { vigenciaDesde: { lte: now } }],
     AND: [{ OR: [{ vigenciaHasta: null }, { vigenciaHasta: { gte: now } }] }],
   };
-}
-
-/** Distancia aproximada en km entre dos coordenadas (haversine). */
-function distanciaKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 export function serializeOptica<
@@ -412,6 +401,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         tipo: cupon.tipo,
         valor,
         minimoCompra: minimo,
+        acumulable: cupon.acumulable,
       },
       descuento,
     };
