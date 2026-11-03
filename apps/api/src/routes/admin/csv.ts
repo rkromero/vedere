@@ -36,6 +36,7 @@ export const CSV_COLUMNS = [
   'precio_lista',
   'permite_receta',
   'destacado',
+  'edicion_limitada',
   'estado',
   'seo_title',
   'seo_description',
@@ -93,6 +94,7 @@ export async function exportProductosCsv(): Promise<string> {
       precio_lista: num(dec(p.precioLista)),
       permite_receta: bool(p.permiteReceta),
       destacado: bool(p.destacado),
+      edicion_limitada: bool(p.edicionLimitada),
       estado: p.estado,
       seo_title: p.seoTitle ?? '',
       seo_description: p.seoDescription ?? '',
@@ -191,6 +193,7 @@ const rowSchema = z.object({
   precio_lista: optNum,
   permite_receta: z.string().default('no').pipe(siNo),
   destacado: z.string().default('no').pipe(siNo),
+  edicion_limitada: z.string().default('no').pipe(siNo),
   estado: z
     .string()
     .trim()
@@ -352,6 +355,7 @@ export async function importProductosCsv(csv: string, userId: string): Promise<I
           precioLista: first.precio_lista,
           permiteReceta: first.permite_receta,
           destacado: first.destacado,
+          edicionLimitada: first.edicion_limitada,
           estado: first.estado,
           seoTitle: first.seo_title,
           seoDescription: first.seo_description,

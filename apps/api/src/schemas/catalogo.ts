@@ -25,7 +25,7 @@ const idSchema = z.string().min(1);
  */
 type SinDefault<T> = T extends z.ZodDefault<infer I> ? I : T;
 type ShapeUpdate<S extends z.ZodRawShape> = { [K in keyof S]: z.ZodOptional<SinDefault<S[K]>> };
-function partialSinDefaults<S extends z.ZodRawShape>(shape: S): z.ZodObject<ShapeUpdate<S>> {
+export function partialSinDefaults<S extends z.ZodRawShape>(shape: S): z.ZodObject<ShapeUpdate<S>> {
   const out: Record<string, z.ZodTypeAny> = {};
   for (const [k, v] of Object.entries(shape)) {
     const inner =
@@ -116,6 +116,7 @@ export const productoBase = z.object({
   precioLista: z.number().nonnegative().nullable().optional(),
   permiteReceta: z.boolean().default(false),
   destacado: z.boolean().default(false),
+  edicionLimitada: z.boolean().default(false),
   estado: z.enum(ESTADOS).default('BORRADOR'),
   seoTitle: nullableStr(70),
   seoDescription: nullableStr(160),
@@ -154,20 +155,49 @@ export const productoListQuery = z.object({
 });
 
 // ---------- Filtros públicos ----------
+/** Lista separada por comas restringida a un enum ("REDONDO,AVIADOR"). */
+const enumList = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .string()
+    .trim()
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.enum(values)).min(1).max(values.length));
+
+const strList = (max: number) =>
+  z
+    .string()
+    .trim()
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().max(max)).min(1).max(24));
+
 export const catalogoQuery = z.object({
   q: z.string().trim().max(120).optional(),
   categoria: z.string().trim().optional(), // slug (incluye hijas)
-  linea: z.enum(LINEAS).optional(),
-  forma: z.enum(FORMAS).optional(),
-  color: z.string().trim().max(60).optional(), // color de armazón (contiene)
-  material: z.enum(MATERIALES).optional(),
-  genero: z.enum(GENEROS).optional(),
+  linea: enumList(LINEAS).optional(),
+  forma: enumList(FORMAS).optional(),
+  color: strList(60).optional(), // colores de armazón (contiene, insensible a mayúsculas)
+  material: enumList(MATERIALES).optional(),
+  genero: enumList(GENEROS).optional(),
   marca: z.string().trim().optional(), // slug
   coleccion: z.string().trim().optional(), // slug
+  slugs: strList(120).optional(), // lista explícita (vistos recientemente)
   precioMin: z.coerce.number().nonnegative().optional(),
   precioMax: z.coerce.number().nonnegative().optional(),
   destacado: z.enum(['true', 'false']).optional(),
-  orden: z.enum(['mas_vendidos', 'novedades', 'precio_asc', 'precio_desc']).default('novedades'),
+  receta: z.enum(['true', 'false']).optional(),
+  orden: z
+    .enum(['mas_vendidos', 'novedades', 'precio_asc', 'precio_desc', 'relevancia'])
+    .default('novedades'),
 });
 
 // ---------- Usuarios (ADMIN) ----------

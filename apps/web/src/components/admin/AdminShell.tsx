@@ -16,6 +16,10 @@ const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boo
   { href: '/admin/colecciones', label: 'Colecciones' },
   { href: '/admin/usuarios', label: 'Usuarios', adminOnly: true },
   { href: '/admin/pedidos', label: 'Pedidos' },
+  { href: '/admin/promos', label: 'Barra de promo' },
+  { href: '/admin/opticas', label: 'Ópticas' },
+  { href: '/admin/cupones', label: 'Cupones' },
+  { href: '/admin/mensajes', label: 'Mensajes' },
   { href: '/admin/configuracion', label: 'Configuración' },
 ];
 

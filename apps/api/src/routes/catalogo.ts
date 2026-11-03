@@ -1,12 +1,21 @@
-// Endpoints públicos de sólo lectura para la tienda. Sólo productos PUBLICADOS.
+// Endpoints públicos de la tienda: catálogo (sólo productos PUBLICADOS), búsqueda, promos,
+// ópticas socias, cupones, newsletter, avisos de stock y contacto.
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 import { Errors } from '../lib/errors.js';
 import { paginate, pageResponse, paginationQuery } from '../lib/pagination.js';
-import { productoInclude, serializeProductoPublico } from '../lib/serialize.js';
+import { dec, productoInclude, serializeProductoPublico } from '../lib/serialize.js';
 import { parse } from '../lib/validate.js';
 import { catalogoQuery } from '../schemas/catalogo.js';
+import {
+  avisoStockInput,
+  contactoInput,
+  cuponValidar,
+  newsletterInput,
+  opticasQuery,
+  sugerenciasQuery,
+} from '../schemas/tienda.js';
 import { buildTree, categoriaConDescendientes } from './admin/categorias.js';
 
 const listQuery = paginationQuery.extend(catalogoQuery.shape);
@@ -16,37 +25,80 @@ const ORDER: Record<string, Prisma.ProductoOrderByWithRelationInput[]> = {
   novedades: [{ publicadoEn: 'desc' }, { createdAt: 'desc' }],
   precio_asc: [{ precio: 'asc' }, { nombre: 'asc' }],
   precio_desc: [{ precio: 'desc' }, { nombre: 'asc' }],
+  relevancia: [{ destacado: 'desc' }, { vendidos: 'desc' }, { publicadoEn: 'desc' }],
 };
 
+/** Rate limit más estricto para formularios públicos (por IP). */
+const formRateLimit = { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } };
+
+function vigente(now: Date): Prisma.PromoMensajeWhereInput {
+  return {
+    OR: [{ vigenciaDesde: null }, { vigenciaDesde: { lte: now } }],
+    AND: [{ OR: [{ vigenciaHasta: null }, { vigenciaHasta: { gte: now } }] }],
+  };
+}
+
+/** Distancia aproximada en km entre dos coordenadas (haversine). */
+function distanciaKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+export function serializeOptica<
+  T extends { createdById?: string | null; updatedById?: string | null },
+>(o: T) {
+  const { createdById: _c, updatedById: _u, ...rest } = o;
+  return rest;
+}
+
 const catalogoRoutes: FastifyPluginAsync = async (app) => {
+  // ------------------------------------------------------------------
+  // Productos
+  // ------------------------------------------------------------------
   app.get('/productos', async (request) => {
     const q = parse(listQuery, request.query);
     const and: Prisma.ProductoWhereInput[] = [{ estado: 'PUBLICADO' }];
 
     if (q.q) {
-      and.push({
-        OR: [
-          { nombre: { contains: q.q, mode: 'insensitive' } },
-          { descripcion: { contains: q.q, mode: 'insensitive' } },
-          { marca: { nombre: { contains: q.q, mode: 'insensitive' } } },
-        ],
-      });
+      const terms = q.q.split(/\s+/).filter(Boolean).slice(0, 5);
+      for (const term of terms) {
+        and.push({
+          OR: [
+            { nombre: { contains: term, mode: 'insensitive' } },
+            { descripcion: { contains: term, mode: 'insensitive' } },
+            { marca: { nombre: { contains: term, mode: 'insensitive' } } },
+            { coleccion: { nombre: { contains: term, mode: 'insensitive' } } },
+            { variantes: { some: { colorArmazon: { contains: term, mode: 'insensitive' } } } },
+          ],
+        });
+      }
     }
     if (q.categoria) {
       const ids = await categoriaConDescendientes(q.categoria);
       and.push({ categorias: { some: { id: { in: ids.length ? ids : ['__none__'] } } } });
     }
-    if (q.linea) and.push({ linea: q.linea });
-    if (q.forma) and.push({ forma: q.forma });
-    if (q.material) and.push({ material: q.material });
-    if (q.genero) and.push({ genero: q.genero });
+    if (q.linea) and.push({ linea: { in: q.linea } });
+    if (q.forma) and.push({ forma: { in: q.forma } });
+    if (q.material) and.push({ material: { in: q.material } });
+    if (q.genero) and.push({ genero: { in: q.genero } });
     if (q.marca) and.push({ marca: { slug: q.marca } });
     if (q.coleccion) and.push({ coleccion: { slug: q.coleccion } });
+    if (q.slugs) and.push({ slug: { in: q.slugs } });
     if (q.destacado) and.push({ destacado: q.destacado === 'true' });
+    if (q.receta) and.push({ permiteReceta: q.receta === 'true' });
     if (q.color) {
       and.push({
         variantes: {
-          some: { activa: true, colorArmazon: { contains: q.color, mode: 'insensitive' } },
+          some: {
+            activa: true,
+            OR: q.color.map((c) => ({ colorArmazon: { contains: c, mode: 'insensitive' } })),
+          },
         },
       });
     }
@@ -73,6 +125,79 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!p) throw Errors.notFound('Producto no encontrado');
     return serializeProductoPublico(p);
+  });
+
+  /** Relacionados: misma colección o forma o línea, los más vendidos primero. */
+  app.get<{ Params: { slug: string } }>('/productos/:slug/relacionados', async (request) => {
+    const p = await prisma.producto.findFirst({
+      where: { slug: request.params.slug, estado: 'PUBLICADO' },
+      select: { id: true, linea: true, forma: true, coleccionId: true },
+    });
+    if (!p) throw Errors.notFound('Producto no encontrado');
+    const or: Prisma.ProductoWhereInput[] = [{ linea: p.linea }];
+    if (p.forma) or.unshift({ forma: p.forma });
+    if (p.coleccionId) or.unshift({ coleccionId: p.coleccionId });
+    const items = await prisma.producto.findMany({
+      where: { estado: 'PUBLICADO', id: { not: p.id }, OR: or },
+      orderBy: [{ vendidos: 'desc' }, { publicadoEn: 'desc' }],
+      include: productoInclude,
+      take: 8,
+    });
+    // Prioridad: misma colección > misma forma > misma línea.
+    const score = (x: (typeof items)[number]) =>
+      (x.coleccionId && x.coleccionId === p.coleccionId ? 4 : 0) +
+      (x.forma && x.forma === p.forma ? 2 : 0) +
+      (x.linea === p.linea ? 1 : 0);
+    items.sort((a, b) => score(b) - score(a));
+    return { items: items.map(serializeProductoPublico) };
+  });
+
+  /** Sugerencias en vivo para el buscador: productos, categorías y colecciones. */
+  app.get('/sugerencias', async (request) => {
+    const { q } = parse(sugerenciasQuery, request.query);
+    const contains = { contains: q, mode: 'insensitive' as const };
+    const [productos, categorias, colecciones] = await Promise.all([
+      prisma.producto.findMany({
+        where: {
+          estado: 'PUBLICADO',
+          OR: [
+            { nombre: contains },
+            { marca: { nombre: contains } },
+            { variantes: { some: { activa: true, colorArmazon: contains } } },
+          ],
+        },
+        orderBy: [{ vendidos: 'desc' }, { publicadoEn: 'desc' }],
+        include: productoInclude,
+        take: 6,
+      }),
+      prisma.categoria.findMany({
+        where: { activa: true, nombre: contains },
+        select: { id: true, nombre: true, slug: true },
+        take: 4,
+      }),
+      prisma.coleccion.findMany({
+        where: { activa: true, nombre: contains },
+        select: { id: true, nombre: true, slug: true, colorHex: true },
+        take: 3,
+      }),
+    ]);
+    return {
+      productos: productos.map((p) => {
+        const s = serializeProductoPublico(p);
+        return {
+          id: s.id,
+          nombre: s.nombre,
+          slug: s.slug,
+          linea: s.linea,
+          precio: s.precio,
+          precioLista: s.precioLista,
+          imagen: s.variantes[0]?.imagenes[0]?.urlMiniatura ?? s.imagenPrincipal,
+          marca: s.marca?.nombre ?? null,
+        };
+      }),
+      categorias,
+      colecciones,
+    };
   });
 
   app.get('/categorias', async () => {
@@ -107,7 +232,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         OR: [{ vigenciaDesde: null }, { vigenciaDesde: { lte: now } }],
         AND: [{ OR: [{ vigenciaHasta: null }, { vigenciaHasta: { gte: now } }] }],
       },
-      orderBy: { nombre: 'asc' },
+      orderBy: [{ vigenciaDesde: 'desc' }, { nombre: 'asc' }],
       select: {
         id: true,
         nombre: true,
@@ -116,14 +241,44 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         bannerUrl: true,
         vigenciaDesde: true,
         vigenciaHasta: true,
+        _count: { select: { productos: { where: { estado: 'PUBLICADO' } } } },
+        productos: {
+          where: { estado: 'PUBLICADO' },
+          orderBy: [{ destacado: 'desc' }, { vendidos: 'desc' }],
+          take: 1,
+          select: {
+            variantes: {
+              where: { activa: true },
+              orderBy: { orden: 'asc' },
+              take: 1,
+              select: {
+                imagenes: {
+                  orderBy: { orden: 'asc' },
+                  take: 1,
+                  select: { url: true, urlMediana: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
-    return { items };
+    return {
+      items: items.map(({ _count, productos, ...c }) => {
+        const img = productos[0]?.variantes[0]?.imagenes[0];
+        return {
+          ...c,
+          productos: _count.productos,
+          portadaUrl: c.bannerUrl ?? img?.url ?? null,
+          portadaMedianaUrl: c.bannerUrl ?? img?.urlMediana ?? img?.url ?? null,
+        };
+      }),
+    };
   });
 
   /** Valores disponibles para armar filtros en la tienda. */
   app.get('/filtros', async () => {
-    const [formas, materiales, generos, colores, precio] = await Promise.all([
+    const [formas, materiales, generos, lineas, colores, precio] = await Promise.all([
       prisma.producto.groupBy({
         by: ['forma'],
         where: { estado: 'PUBLICADO', forma: { not: null } },
@@ -135,6 +290,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         _count: true,
       }),
       prisma.producto.groupBy({ by: ['genero'], where: { estado: 'PUBLICADO' }, _count: true }),
+      prisma.producto.groupBy({ by: ['linea'], where: { estado: 'PUBLICADO' }, _count: true }),
       prisma.variante.groupBy({
         by: ['colorArmazon', 'colorArmazonHex'],
         where: { activa: true, producto: { estado: 'PUBLICADO' } },
@@ -151,6 +307,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
       formas: formas.map((f) => ({ valor: f.forma, cantidad: f._count })),
       materiales: materiales.map((m) => ({ valor: m.material, cantidad: m._count })),
       generos: generos.map((g) => ({ valor: g.genero, cantidad: g._count })),
+      lineas: lineas.map((l) => ({ valor: l.linea, cantidad: l._count })),
       colores: colores.map((c) => ({
         valor: c.colorArmazon,
         hex: c.colorArmazonHex,
@@ -158,6 +315,143 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
       })),
       precio: { min: Number(precio._min.precio ?? 0), max: Number(precio._max.precio ?? 0) },
     };
+  });
+
+  // ------------------------------------------------------------------
+  // Promos de la barra superior
+  // ------------------------------------------------------------------
+  app.get('/promos', async () => {
+    const items = await prisma.promoMensaje.findMany({
+      where: { activo: true, ...vigente(new Date()) },
+      orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, texto: true, link: true },
+    });
+    return { items };
+  });
+
+  // ------------------------------------------------------------------
+  // Ópticas socias (buscador por código postal / cercanía)
+  // ------------------------------------------------------------------
+  app.get('/opticas', async (request) => {
+    const q = parse(opticasQuery, request.query);
+    const where: Prisma.OpticaWhereInput = { activa: true };
+    if (q.q) {
+      const contains = { contains: q.q, mode: 'insensitive' as const };
+      where.OR = [
+        { nombre: contains },
+        { localidad: contains },
+        { provincia: contains },
+        { direccion: contains },
+        { codigoPostal: contains },
+      ];
+    }
+    const opticas = await prisma.optica.findMany({
+      where,
+      orderBy: [{ orden: 'asc' }, { provincia: 'asc' }, { localidad: 'asc' }, { nombre: 'asc' }],
+    });
+
+    const cp = q.cp ? Number(q.cp) : null;
+    const conDistancia = opticas.map((o) => {
+      const cpOptica = Number(o.codigoPostal.replace(/\D/g, '').slice(0, 4));
+      const distanciaCp =
+        cp !== null && Number.isFinite(cpOptica) ? Math.abs(cpOptica - cp) : null;
+      const km =
+        q.lat !== undefined && q.lng !== undefined && o.lat !== null && o.lng !== null
+          ? Math.round(distanciaKm(q.lat, q.lng, o.lat, o.lng) * 10) / 10
+          : null;
+      return { ...serializeOptica(o), distanciaKm: km, distanciaCp };
+    });
+
+    if (q.lat !== undefined && q.lng !== undefined) {
+      conDistancia.sort((a, b) => (a.distanciaKm ?? 1e9) - (b.distanciaKm ?? 1e9));
+    } else if (cp !== null) {
+      conDistancia.sort((a, b) => (a.distanciaCp ?? 1e9) - (b.distanciaCp ?? 1e9));
+    }
+    return { items: conDistancia.slice(0, q.limit), total: conDistancia.length };
+  });
+
+  app.get<{ Params: { slug: string } }>('/opticas/:slug', async (request) => {
+    const o = await prisma.optica.findFirst({
+      where: { slug: request.params.slug, activa: true },
+    });
+    if (!o) throw Errors.notFound('Óptica no encontrada');
+    return serializeOptica(o);
+  });
+
+  // ------------------------------------------------------------------
+  // Cupones: validación para el carrito (el consumo real es en el checkout)
+  // ------------------------------------------------------------------
+  app.post('/cupones/validar', formRateLimit, async (request) => {
+    const body = parse(cuponValidar, request.body);
+    const cupon = await prisma.cupon.findUnique({ where: { codigo: body.codigo.toUpperCase() } });
+    const now = new Date();
+    if (!cupon || !cupon.activo) throw Errors.notFound('Ese cupón no existe o ya no está vigente');
+    if (cupon.vigenciaDesde && cupon.vigenciaDesde > now)
+      throw Errors.badRequest('Ese cupón todavía no está vigente');
+    if (cupon.vigenciaHasta && cupon.vigenciaHasta < now)
+      throw Errors.badRequest('Ese cupón ya venció');
+    if (cupon.usosMax !== null && cupon.usos >= cupon.usosMax)
+      throw Errors.badRequest('Ese cupón ya alcanzó el máximo de usos');
+    const minimo = dec(cupon.minimoCompra);
+    if (minimo && body.subtotal < minimo) {
+      const formateado = Math.round(minimo).toLocaleString('es-AR');
+      throw Errors.badRequest('Ese cupón aplica para compras desde $' + formateado, {
+        minimoCompra: minimo,
+      });
+    }
+    const valor = dec(cupon.valor) ?? 0;
+    const descuento =
+      cupon.tipo === 'PORCENTAJE'
+        ? Math.round((body.subtotal * valor) / 100)
+        : Math.min(valor, body.subtotal);
+    return {
+      valido: true,
+      cupon: {
+        codigo: cupon.codigo,
+        descripcion: cupon.descripcion,
+        tipo: cupon.tipo,
+        valor,
+        minimoCompra: minimo,
+      },
+      descuento,
+    };
+  });
+
+  // ------------------------------------------------------------------
+  // Newsletter / avisos de stock / contacto
+  // ------------------------------------------------------------------
+  app.post('/newsletter', formRateLimit, async (request, reply) => {
+    const body = parse(newsletterInput, request.body);
+    await prisma.suscripcionNewsletter.upsert({
+      where: { email: body.email },
+      update: {},
+      create: { email: body.email, origen: body.origen ?? 'web' },
+    });
+    return reply.status(201).send({ ok: true });
+  });
+
+  app.post('/avisos-stock', formRateLimit, async (request, reply) => {
+    const body = parse(avisoStockInput, request.body);
+    const variante = await prisma.variante.findFirst({
+      where: { id: body.varianteId, activa: true, producto: { estado: 'PUBLICADO' } },
+      select: { id: true },
+    });
+    if (!variante) throw Errors.notFound('La variante no existe');
+    await prisma.avisoStock.upsert({
+      where: { email_varianteId: { email: body.email, varianteId: variante.id } },
+      update: { notificadoEn: null },
+      create: { email: body.email, varianteId: variante.id },
+    });
+    return reply.status(201).send({ ok: true });
+  });
+
+  app.post('/contacto', formRateLimit, async (request, reply) => {
+    const body = parse(contactoInput, request.body);
+    // Honeypot: los bots completan el campo oculto; respondemos ok sin guardar.
+    if (body.web) return reply.status(201).send({ ok: true });
+    const { web: _w, ...data } = body;
+    const m = await prisma.mensajeContacto.create({ data });
+    return reply.status(201).send({ ok: true, id: m.id });
   });
 };
 

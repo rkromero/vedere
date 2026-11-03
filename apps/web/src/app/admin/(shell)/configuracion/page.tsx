@@ -3,7 +3,8 @@ import { Badge, Card, PageHeader } from '@/components/admin/ui';
 import { serverApiOrNull } from '@/lib/api-server';
 import { getSession } from '@/lib/session';
 import { site } from '@/config/site';
-import { LABELS } from '@/lib/format';
+import Link from 'next/link';
+import { LABELS, formatPrecio } from '@/lib/format';
 import { colors } from '@vedere/ui';
 
 export const metadata: Metadata = { title: 'Configuración' };
@@ -28,6 +29,7 @@ const COLOR_NAMES: Record<keyof typeof colors, string> = {
   blanco: 'Blanco',
   grisClaro: 'Gris claro',
   grisMedio: 'Gris medio',
+  grisTexto: 'Gris texto',
   sol: 'Sol',
   vetro: 'Vetro',
   noche: 'Noche',
@@ -98,22 +100,33 @@ export default async function ConfiguracionPage() {
 
         <Card
           title="Barra de promo"
-          actions={
-            <Badge tone={site.promo.enabled ? 'ok' : 'neutral'}>
-              {site.promo.enabled ? 'Visible' : 'Oculta'}
-            </Badge>
-          }
+          actions={<Badge tone="info">Se edita en Barra de promo</Badge>}
         >
+          <p className="text-sm text-negro/80">
+            Los mensajes rotativos de la barra superior se cargan en{' '}
+            <Link href="/admin/promos" className="underline underline-offset-2">
+              Barra de promo
+            </Link>
+            . Si no hay ninguno activo, la tienda usa el texto de respaldo de las variables{' '}
+            <code className="font-mono text-xs">NEXT_PUBLIC_PROMO_TEXT</code> y{' '}
+            <code className="font-mono text-xs">NEXT_PUBLIC_PROMO_LINK</code>
+            {site.promo.enabled ? ` (ahora: "${site.promo.text}")` : ' (desactivado)'}.
+          </p>
+        </Card>
+
+        <Card title="Tienda">
           <dl className="divide-y divide-negro/5">
-            <Row label="Texto">{site.promo.text || '—'}</Row>
-            <Row label="Enlace">{site.promo.link || '—'}</Row>
+            <Row label="Cuotas sin interés">{site.comercial.cuotas}</Row>
+            <Row label="Envío gratis desde">{formatPrecio(site.comercial.envioGratisDesde)}</Row>
+            <Row label="Días para cambios">{site.comercial.diasCambio}</Row>
+            <Row label="WhatsApp">{site.whatsapp || '—'}</Row>
+            <Row label="Email de contacto">{site.emailContacto}</Row>
           </dl>
           <p className="mt-4 text-sm text-gris-medio">
-            Se configura con <code className="font-mono text-xs">NEXT_PUBLIC_PROMO_ENABLED</code>,{' '}
-            <code className="font-mono text-xs">NEXT_PUBLIC_PROMO_TEXT</code> y{' '}
-            <code className="font-mono text-xs">NEXT_PUBLIC_PROMO_LINK</code> en el servicio{' '}
-            <code className="font-mono text-xs">web</code>. Son variables de build: después de
-            cambiarlas hay que redeployar la web.
+            Variables <code className="font-mono text-xs">NEXT_PUBLIC_CUOTAS</code>,{' '}
+            <code className="font-mono text-xs">NEXT_PUBLIC_ENVIO_GRATIS_DESDE</code>,{' '}
+            <code className="font-mono text-xs">NEXT_PUBLIC_WHATSAPP</code> y{' '}
+            <code className="font-mono text-xs">NEXT_PUBLIC_EMAIL_CONTACTO</code> del servicio web.
           </p>
         </Card>
 

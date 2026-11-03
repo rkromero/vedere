@@ -1,4 +1,5 @@
 // Esquema de Vedere. Prompt 1: usuarios y sesiones. Prompt 2: catálogo (marcas, categorías, colecciones, productos, variantes, imágenes).
+// Prompt 3: tienda pública (promos, ópticas socias, cupones, newsletter, avisos de stock, contacto, carrito sincronizado).
 
 generator client {
   provider = "prisma-client-js"
@@ -32,6 +33,7 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
+  carrito       Carrito?
 
   @@index([rol])
   @@map("users")
@@ -119,18 +121,18 @@ model Marca {
 }
 
 model Categoria {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   nombre      String
-  slug        String   @unique
-  padreId     String?  @map("padre_id")
+  slug        String      @unique
+  padreId     String?     @map("padre_id")
   padre       Categoria?  @relation("CategoriaArbol", fields: [padreId], references: [id], onDelete: SetNull)
   hijas       Categoria[] @relation("CategoriaArbol")
-  orden       Int      @default(0)
-  activa      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdById String?  @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
+  orden       Int         @default(0)
+  activa      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdById String?     @map("created_by_id")
+  updatedById String?     @map("updated_by_id")
 
   productos Producto[]
 
@@ -158,36 +160,38 @@ model Coleccion {
 }
 
 model Producto {
-  id             String         @id @default(cuid())
-  nombre         String
-  slug           String         @unique
-  descripcion    String         @default("")
-  marcaId        String?        @map("marca_id")
-  marca          Marca?         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
-  categorias     Categoria[]
-  coleccionId    String?        @map("coleccion_id")
-  coleccion      Coleccion?     @relation(fields: [coleccionId], references: [id], onDelete: SetNull)
-  linea          Linea
-  material       Material?
-  forma          Forma?
-  genero         Genero         @default(UNISEX)
-  calibreMm      Int?           @map("calibre_mm")
-  puenteMm       Int?           @map("puente_mm")
-  varillaMm      Int?           @map("varilla_mm")
-  precio         Decimal        @db.Decimal(12, 2)
-  precioLista    Decimal?       @map("precio_lista") @db.Decimal(12, 2)
-  permiteReceta  Boolean        @default(false) @map("permite_receta")
-  destacado      Boolean        @default(false)
-  estado         EstadoProducto @default(BORRADOR)
-  seoTitle       String?        @map("seo_title")
-  seoDescription String?        @map("seo_description")
+  id              String         @id @default(cuid())
+  nombre          String
+  slug            String         @unique
+  descripcion     String         @default("")
+  marcaId         String?        @map("marca_id")
+  marca           Marca?         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  categorias      Categoria[]
+  coleccionId     String?        @map("coleccion_id")
+  coleccion       Coleccion?     @relation(fields: [coleccionId], references: [id], onDelete: SetNull)
+  linea           Linea
+  material        Material?
+  forma           Forma?
+  genero          Genero         @default(UNISEX)
+  calibreMm       Int?           @map("calibre_mm")
+  puenteMm        Int?           @map("puente_mm")
+  varillaMm       Int?           @map("varilla_mm")
+  precio          Decimal        @db.Decimal(12, 2)
+  precioLista     Decimal?       @map("precio_lista") @db.Decimal(12, 2)
+  permiteReceta   Boolean        @default(false) @map("permite_receta")
+  destacado       Boolean        @default(false)
+  /// Etiqueta "Edición limitada" en la tienda.
+  edicionLimitada Boolean        @default(false) @map("edicion_limitada")
+  estado          EstadoProducto @default(BORRADOR)
+  seoTitle        String?        @map("seo_title")
+  seoDescription  String?        @map("seo_description")
   /// Contador para "más vendidos" (lo actualizan los pedidos).
-  vendidos       Int            @default(0)
-  publicadoEn    DateTime?      @map("publicado_en")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
-  createdById    String?        @map("created_by_id")
-  updatedById    String?        @map("updated_by_id")
+  vendidos        Int            @default(0)
+  publicadoEn     DateTime?      @map("publicado_en")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  createdById     String?        @map("created_by_id")
+  updatedById     String?        @map("updated_by_id")
 
   variantes Variante[]
 
@@ -218,7 +222,8 @@ model Variante {
   createdById     String?  @map("created_by_id")
   updatedById     String?  @map("updated_by_id")
 
-  imagenes ImagenVariante[]
+  imagenes    ImagenVariante[]
+  avisosStock AvisoStock[]
 
   @@index([productoId])
   @@index([colorArmazon])
@@ -240,4 +245,139 @@ model ImagenVariante {
 
   @@index([varianteId, orden])
   @@map("imagenes_variante")
+}
+
+// ============================================================
+// Tienda pública (prompt 3)
+// ============================================================
+
+/// Mensajes de la barra de promo superior (rotativa). Se editan desde el admin.
+model PromoMensaje {
+  id            String    @id @default(cuid())
+  texto         String
+  link          String?
+  orden         Int       @default(0)
+  activo        Boolean   @default(true)
+  vigenciaDesde DateTime? @map("vigencia_desde")
+  vigenciaHasta DateTime? @map("vigencia_hasta")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdById   String?   @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+
+  @@index([activo, orden])
+  @@map("promo_mensajes")
+}
+
+/// Óptica socia: arma, entrega y ajusta los pedidos cerca del cliente.
+model Optica {
+  id           String   @id @default(cuid())
+  nombre       String
+  slug         String   @unique
+  direccion    String
+  localidad    String
+  provincia    String
+  codigoPostal String   @map("codigo_postal")
+  lat          Float?
+  lng          Float?
+  telefono     String?
+  whatsapp     String?
+  email        String?
+  horarios     String?
+  activa       Boolean  @default(true)
+  orden        Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdById  String?  @map("created_by_id")
+  updatedById  String?  @map("updated_by_id")
+
+  @@index([activa, provincia])
+  @@index([codigoPostal])
+  @@map("opticas")
+}
+
+enum TipoCupon {
+  PORCENTAJE
+  MONTO
+}
+
+/// Cupón de descuento (se valida en el carrito; se consume en el checkout, prompt 4).
+model Cupon {
+  id            String    @id @default(cuid())
+  codigo        String    @unique
+  descripcion   String?
+  tipo          TipoCupon
+  valor         Decimal   @db.Decimal(12, 2)
+  minimoCompra  Decimal?  @map("minimo_compra") @db.Decimal(12, 2)
+  usosMax       Int?      @map("usos_max")
+  usos          Int       @default(0)
+  activo        Boolean   @default(true)
+  vigenciaDesde DateTime? @map("vigencia_desde")
+  vigenciaHasta DateTime? @map("vigencia_hasta")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdById   String?   @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+
+  @@map("cupones")
+}
+
+model SuscripcionNewsletter {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  origen    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("suscripciones_newsletter")
+}
+
+/// "Avisame cuando vuelva": pedido de aviso por variante sin stock.
+model AvisoStock {
+  id           String    @id @default(cuid())
+  email        String
+  varianteId   String    @map("variante_id")
+  variante     Variante  @relation(fields: [varianteId], references: [id], onDelete: Cascade)
+  notificadoEn DateTime? @map("notificado_en")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@unique([email, varianteId])
+  @@index([varianteId])
+  @@map("avisos_stock")
+}
+
+enum MotivoContacto {
+  CONSULTA
+  TURNO
+  CAMBIO
+  ARREPENTIMIENTO
+  OPTICA
+  OTRO
+}
+
+/// Mensajes del formulario de contacto (incluye pedidos de turno multifocal).
+model MensajeContacto {
+  id        String         @id @default(cuid())
+  nombre    String
+  email     String
+  telefono  String?
+  motivo    MotivoContacto @default(CONSULTA)
+  mensaje   String
+  pedido    String?
+  leidoEn   DateTime?      @map("leido_en")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([motivo, createdAt])
+  @@map("mensajes_contacto")
+}
+
+/// Carrito persistido por usuario (se sincroniza con el localStorage del navegador).
+model Carrito {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     Json     @default("[]")
+  cupon     String?
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("carritos")
 }
