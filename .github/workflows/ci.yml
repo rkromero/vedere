@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    env:
+      # Valores ficticios sólo para compilar/testear. Los reales viven en Railway.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      WEB_URL: http://localhost:3000
+      JWT_ACCESS_SECRET: ci-access-secret-de-mas-de-32-caracteres-xxxx
+      JWT_REFRESH_SECRET: ci-refresh-secret-de-mas-de-32-caracteres-xxx
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate + build db
+        run: pnpm --filter @vedere/db build
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

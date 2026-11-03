@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80" role="img" aria-label="Vedere">
+  <!-- PLACEHOLDER: reemplazar por el logo oficial en blanco (SVG) manteniendo el nombre de archivo -->
+  <g fill="#FFFFFF">
+    <circle cx="26" cy="40" r="22" fill="none" stroke="#FFFFFF" stroke-width="6"/>
+    <circle cx="26" cy="40" r="8"/>
+    <text x="68" y="56" font-family="Archivo, Arial, sans-serif" font-weight="800" font-size="48" letter-spacing="2">VEDERE</text>
+  </g>
+</svg>

@@ -1,0 +1,33 @@
+{
+  "name": "vedere",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Vedere — e-commerce de anteojos con entrega y ajuste en ópticas socias (Argentina)",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20 <23",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @vedere/db build && pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @vedere/db generate",
+    "db:migrate": "pnpm --filter @vedere/db migrate:dev",
+    "db:deploy": "pnpm --filter @vedere/db migrate:deploy",
+    "db:seed": "pnpm --filter @vedere/db seed",
+    "db:studio": "pnpm --filter @vedere/db studio"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

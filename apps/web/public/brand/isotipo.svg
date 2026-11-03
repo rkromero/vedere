@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Vedere">
+  <!-- PLACEHOLDER: reemplazar por el isotipo oficial (SVG) manteniendo el nombre de archivo -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#0A0A0A" stroke-width="7"/>
+  <circle cx="32" cy="32" r="10" fill="#0A0A0A"/>
+</svg>

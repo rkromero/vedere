@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/* Escanear también los componentes compartidos de packages/ui */
+@source '../../../../packages/ui/src';
+
+/* ============================================================
+   Tokens de marca Vedere (Tailwind v4: @theme reemplaza tailwind.config)
+   ============================================================ */
+@theme {
+  /* Base */
+  --color-negro: #0a0a0a;
+  --color-blanco: #ffffff;
+  --color-gris-claro: #f2f2f0;
+  --color-gris-medio: #8a8a86;
+
+  /* Colección */
+  --color-sol: #f2b33d;
+  --color-vetro: #7fd1c1;
+  --color-noche: #3a5bd9;
+  --color-carey: #b7712f;
+
+  /* Tipografía: Archivo variable (ejes wdth + wght) cargada con next/font */
+  --font-sans: var(--font-archivo), 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-archivo: var(--font-archivo), 'Archivo', ui-sans-serif, system-ui, sans-serif;
+
+  /* Ejes variables */
+  --font-width-campaign: 62;
+  --font-width-text: 100;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-variation-settings: 'wdth' 100;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-blanco text-negro;
+  }
+
+  /* Títulos y texto: wdth 100, pesos 400 a 600 */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-variation-settings: 'wdth' 100;
+    font-weight: 600;
+  }
+}
+
+@utility font-campaign {
+  /* Titulares de campaña: Archivo wdth 62, peso 800, mayúsculas */
+  font-family: var(--font-archivo);
+  font-variation-settings:
+    'wdth' 62,
+    'wght' 800;
+  font-weight: 800;
+  font-stretch: 62%;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+
+@utility font-text {
+  font-variation-settings: 'wdth' 100;
+  font-stretch: 100%;
+  text-transform: none;
+  letter-spacing: 0;
+}
