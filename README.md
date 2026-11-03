@@ -117,7 +117,7 @@ curl -b cookies.txt http://localhost:4000/admin/ping
 
 ## Deploy en Railway
 
-Proyecto **vedere** con tres servicios: `Postgres`, `api` y `web`. `api` y `web` están vinculados al repo de GitHub (`rkromero/vedere`) y despliegan automáticamente con cada push a `main`. Cada uno se construye con su Dockerfile desde la raíz del monorepo (`apps/api/Dockerfile`, `apps/web/Dockerfile`; config en `apps/*/railway.json`).
+Proyecto **vedere** con tres servicios: `Postgres`, `api` y `web`. `api` y `web` están vinculados al repo de GitHub (`rkromero/vedere`) y despliegan automáticamente con cada push a `main`. Cada uno se construye con su Dockerfile desde la raíz del monorepo (`apps/api/Dockerfile`, `apps/web/Dockerfile`), configurado en el servicio de Railway (Dockerfile path, healthcheck `/health`, restart on failure). Railway deprecó `railway.json`; la configuración vive en el servicio.
 
 La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica las migraciones pendientes.
 
