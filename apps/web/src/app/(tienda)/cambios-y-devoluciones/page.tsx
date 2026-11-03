@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { buttonClasses } from '@vedere/ui';
 import { site } from '@/config/site';
 import { Pagina, Prose } from '@/components/tienda/Pagina';
+import { SolicitudCambioForm } from '@/components/tienda/cambios/SolicitudCambioForm';
 
 export const metadata: Metadata = {
   title: 'Cambios y devoluciones',
@@ -10,7 +11,12 @@ export const metadata: Metadata = {
   alternates: { canonical: '/cambios-y-devoluciones' },
 };
 
-export default function CambiosPage() {
+export default async function CambiosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ pedido?: string }>;
+}) {
+  const { pedido } = await searchParams;
   const dias = site.comercial.diasCambio;
   return (
     <Pagina
@@ -49,16 +55,19 @@ export default function CambiosPage() {
           Pasá sin turno con tus anteojos y el número de pedido.
         </p>
 
-        <h2>¿Cómo pido un cambio?</h2>
+        <h2>¿Cómo pido un cambio o una devolución?</h2>
         <ol>
-          <li>Escribinos desde el formulario con tu número de pedido.</li>
-          <li>Te confirmamos la óptica donde hacerlo o coordinamos el retiro.</li>
-          <li>Listo: el cambio o reintegro se procesa en hasta 10 días hábiles.</li>
+          <li>Buscá tu pedido acá abajo con el número y el email de la compra.</li>
+          <li>Elegí cambio o devolución y contanos el motivo.</li>
+          <li>Te confirmamos por email: un pedido nuevo sin cargo o el reintegro en hasta 10 días hábiles.</li>
         </ol>
       </Prose>
+      <div id="solicitud" className="mt-10 scroll-mt-24">
+        <SolicitudCambioForm numeroInicial={pedido ?? ''} />
+      </div>
       <div className="mt-10 flex flex-wrap gap-3">
-        <Link href="/contacto?motivo=cambio" className={buttonClasses('primary')}>
-          Pedir un cambio
+        <Link href="/contacto?motivo=cambio" className={buttonClasses('secondary')}>
+          Tengo otra consulta
         </Link>
         <Link href="/legal/arrepentimiento" className={buttonClasses('secondary')}>
           Botón de arrepentimiento

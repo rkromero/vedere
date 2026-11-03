@@ -2,7 +2,7 @@
 
 E-commerce de anteojos (sol, recetados, multifocales y accesorios) de Argentina. El cliente compra online y el pedido lo arma, entrega y ajusta la **óptica socia más cercana** a su domicilio.
 
-> Estado: **prompt 3 de 6** — tienda pública (home, listados con filtros, ficha, buscador, carrito, ópticas e institucionales) sobre el catálogo y backoffice del prompt 2. Falta: checkout y pagos (prompt 4).
+> Estado: **prompt 5 de 6** — red de ópticas socias y gestión de pedidos (asignación automática por cercanía, panel `/optica`, línea de tiempo, reembolsos, cambios y devoluciones, liquidaciones) sobre el checkout y pagos del prompt 4 (API) y la tienda pública del prompt 3. Pendiente: pantallas web del checkout (prompt 4) y prompt 6.
 
 ## Stack
 
@@ -99,6 +99,21 @@ Scripts útiles:
 - **ImagenVariante**: tipo (FRENTE, PERFIL, TRES_CUARTOS, PUESTO, OTRA), orden, URL grande / mediana / miniatura, alt.
 - **Auditoría** en todos: `createdAt`, `updatedAt`, `createdById`, `updatedById`.
 
+## Modelo de datos (pedidos y ópticas — prompts 4 y 5)
+
+- **Optica**: nombre comercial, slug, razón social, CUIT, dirección geocodificada (lat/lng), radio de cobertura (km), horarios, teléfono, WhatsApp, email, óptico técnico responsable y matrícula, comisión %, capacidad diaria, activa/pausada. Los usuarios con rol **OPTICA** tienen `opticaId`.
+- **Pedido**: número `VD-nnnnn`, cliente (email, nombre, DNI, teléfono), entrega (retiro en óptica o envío a domicilio con dirección geocodificada), óptica asignada, canal (WEB, WHATSAPP, OPTICA, ADMIN), ítems, totales y descuentos, receta, pago (`estadoPago`: PENDIENTE, APROBADO, RECHAZADO, REEMBOLSADO), estado, fechas (`pagadoEn`, `asignadoEn`, `aceptarAntesDe`, `aceptadoEn`, `enviadoEn`, `entregadoEn`), `numeroSeguimiento`, `opticasExcluidas` (rechazaron o vencieron), comisión congelada al entregar (`comisionPct`, `comisionMonto`), `reembolsado`, factura y notas internas.
+- **Estados** (`EstadoPedido`): `PENDIENTE_PAGO → PAGADO → ASIGNADO → ACEPTADO → EN_ARMADO → LISTO → (ENVIADO) → ENTREGADO`, más `CANCELADO` y `DEVUELTO`. Las transiciones válidas están en `apps/api/src/lib/asignacion.ts` (`TRANSICIONES`); el admin puede forzar una con nota.
+- **PedidoEvento** (línea de tiempo): tipo (ESTADO, ASIGNACION, RECHAZO, NOTA, EMAIL, PAGO, REEMBOLSO, SOLICITUD), estado anterior/nuevo, óptica, actor (usuario, nombre, rol o Sistema), nota y datos.
+- **Turno** (agenda de la óptica): tipo (MEDICION, AJUSTE, RETIRO, OTRO), fecha, duración, cliente, pedido opcional, estado.
+- **SolicitudCambio**: tipo (CAMBIO, DEVOLUCION), motivo, detalle, estado (PENDIENTE, APROBADA, RECHAZADA), resolución (NUEVO_PEDIDO, REINTEGRO), pedido nuevo, respuesta al cliente.
+- **Reembolso**: proveedor (mercadopago / manual), id externo, monto, motivo, estado. **EmailEnviado**: cada email al cliente, a la óptica o al admin (ENVIADO por Resend, SIMULADO sin `RESEND_API_KEY`, ERROR).
+- **ConfigTienda**: además de pagos y cuotas, `plazoAceptacionHoras` (horas hábiles que tiene la óptica para aceptar), `horaHabilDesde` / `horaHabilHasta` (hora Argentina) y `sabadoHabil`.
+
+### Asignación automática
+
+Al aprobarse el pago (webhook de Mercado Pago o confirmación manual de la transferencia) el pedido pasa a `PAGADO` y se asigna a la **óptica activa más cercana** (Haversine sobre lat/lng) que tenga al cliente **dentro de su radio** y **capacidad disponible ese día** (pedidos asignados hoy, hora Argentina, menos cancelados). Si ninguna lo cubre queda `PAGADO` **sin asignar**, se registra en la línea de tiempo y se avisa al admin por email (`ADMIN_NOTIFY_EMAIL`). La óptica tiene `plazoAceptacionHoras` hábiles para aceptar: si rechaza (con motivo) o se vence el plazo (`procesarVencidos`, cada `ASIGNACION_INTERVALO_MIN` minutos), queda excluida y el pedido pasa a la siguiente más cercana. El admin puede reasignar a mano a cualquier óptica indicando el motivo: queda registrado quién y por qué. Cada cambio de estado se audita y dispara un email al cliente.
+
 ## API
 
 Base: `http://localhost:4000`. Todas las respuestas de error tienen la forma `{ error: { code, message, details? } }`. Un SKU o slug duplicado responde `409 DUPLICATE` con mensaje claro y no guarda nada.
@@ -130,7 +145,44 @@ Base: `http://localhost:4000`. Todas las respuestas de error tienen la forma `{ 
 | `POST /admin/imagenes`                                                                     | multipart `file` (+ `folder`) → sharp → WebP 320 / 800 / 1600 → R2 (S3 `PutObject`, cache immutable) o disco local. `GET /admin/imagenes/config` informa el driver                        |
 | `POST /admin/imagenes/presign`                                                             | URL prefirmada para subida directa a R2                                                                                                                                                   |
 
-Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usuarios/:id`, `POST /admin/usuarios/:id/password`, `POST /admin/usuarios/:id/desactivar`, `POST /admin/usuarios/:id/activar`. Un OPERADOR recibe 403.
+Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usuarios/:id` (rol OPTICA exige `opticaId`), `POST /admin/usuarios/:id/password`, `POST /admin/usuarios/:id/desactivar`, `POST /admin/usuarios/:id/activar`, `PUT /admin/config-tienda`. Un OPERADOR recibe 403.
+
+### Backoffice: pedidos, ópticas y liquidaciones (prompt 5)
+
+| Ruta                                                                     | Descripción                                                                                                                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/pedidos`                                                     | Listado paginado + `resumen` (por estado, por pago, sin asignar, solicitudes pendientes). Filtros: `q` (número, email, nombre, DNI, factura), `estado`, `estadoPago`, `metodoPago`, `opticaId` (o `sin`), `linea`, `canal`, `desde`, `hasta` |
+| `GET /admin/pedidos/export.csv`                                          | Mismos filtros, CSV (`;`, BOM, hasta 5000 filas)                                                                                                                                            |
+| `GET /admin/pedidos/:id`                                                 | Detalle completo (línea de tiempo, solicitudes, turnos, reembolsos, emails, pagos) + `candidatas` (ópticas con distancia, radio, cupo y elegibilidad)                                         |
+| `PUT /admin/pedidos/:id` · `POST /admin/pedidos/:id/notas`               | Factura y notas internas · nota interna en la línea de tiempo                                                                                                                               |
+| `POST /admin/pedidos/:id/estado`                                         | `{ estado, nota?, numeroSeguimiento?, forzar? }` — valida la secuencia salvo `forzar`; audita y avisa al cliente                                                                              |
+| `POST /admin/pedidos/:id/asignar` · `/asignar-automatico`                | Reasignación manual `{ opticaId, motivo }` (queda quién y por qué) · vuelve a correr la asignación automática                                                                                 |
+| `POST /admin/pedidos/:id/emails/reenviar`                                | Reenvía al cliente el email del estado actual (o `{ estado }`)                                                                                                                              |
+| `POST /admin/pedidos/:id/reembolsar`                                     | `{ monto?, motivo, cancelar? }` — total o parcial; Mercado Pago vía `POST /v1/payments/:id/refunds`, transferencia queda registrado como manual                                              |
+| `POST /admin/pedidos/:id/cancelar`                                       | `{ motivo, reembolsar? }` — repone stock, libera la óptica, avisa al cliente                                                                                                                 |
+| `POST /admin/pedidos/:id/pago/aprobar` · `/pago/rechazar`                | Confirmación manual de transferencias (al aprobar: `PAGADO` + asignación automática)                                                                                                        |
+| `GET /admin/solicitudes` · `POST /admin/solicitudes/:id/aprobar` · `/rechazar` | Bandeja de cambios y devoluciones (`estado`, `tipo`). Aprobar: `{ resolucion: NUEVO_PEDIDO \| REINTEGRO, respuesta? }` (nuevo pedido sin cargo asignado a una óptica, o reembolso total)  |
+| `GET /admin/liquidaciones?mes=AAAA-MM[&opticaId]`                        | Resumen por óptica (entregados, monto, comisión) o detalle de una                                                                                                                            |
+| `GET /admin/opticas/mapa`                                                | Ópticas con coordenadas y radio para el mapa Leaflet                                                                                                                                        |
+| `GET /admin/config-tienda`                                               | Configuración comercial + plazo/horario hábil de aceptación (`entorno` informa si hay Resend, MP, etc.)                                                                                      |
+
+### Panel de la óptica (`/optica/*`) — sólo rol OPTICA con óptica vinculada
+
+Un usuario OPTICA sólo ve los pedidos de su óptica: cualquier otro pedido responde **403** aunque exista. ADMIN, OPERADOR y CLIENTE reciben 403 en todo el prefijo.
+
+| Ruta                                                              | Descripción                                                                                                                                  |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /optica/me`                                                  | Datos de la óptica y resumen (pendientes de aceptar, en curso, turnos de hoy)                                                                |
+| `GET /optica/pedidos`                                             | Pedidos asignados (`q`, `estado`, `desde`, `hasta`) + `resumen` por estado                                                                   |
+| `GET /optica/pedidos/:id`                                         | Detalle con ítems, receta (valores o archivo), datos del cliente, turnos, historial y comisión                                               |
+| `POST /optica/pedidos/:id/aceptar` · `/rechazar`                  | Aceptar · rechazar `{ motivo }` (pasa a la siguiente óptica)                                                                                  |
+| `POST /optica/pedidos/:id/estado`                                 | `{ estado: EN_ARMADO \| LISTO \| ENVIADO \| ENTREGADO, nota?, numeroSeguimiento? }` — ENVIADO sólo con envío a domicilio y con seguimiento |
+| `GET/POST /optica/turnos` · `PUT/DELETE /optica/turnos/:id`       | Agenda de turnos (medición, ajuste, retiro)                                                                                                  |
+| `GET /optica/liquidacion?mes=AAAA-MM`                             | Liquidación mensual: pedidos entregados, monto y comisión                                                                                    |
+
+### Checkout (`/checkout/*`) — prompt 4
+
+`GET /config`, `POST /cotizar`, `GET /optica?lat&lng`, `GET /direcciones` + `POST /direcciones/geocodificar`, `POST /recetas/archivo`, `POST /pedidos` (crea el pedido: Mercado Pago o transferencia), `GET /mis-pedidos`, `GET /pedidos/:id`, `POST /pedidos/:id/comprobante`, `POST /pedidos/:id/sincronizar-pago`, webhook de Mercado Pago, y (prompt 5) `GET /pedidos/buscar?numero&email` y `POST /pedidos/:id/solicitudes` `{ tipo, motivo, detalle?, email }` para pedir un cambio o devolución (sólo pedidos LISTO/ENVIADO/ENTREGADO dentro de los 30 días, una pendiente por pedido).
 
 ### Tienda (`/catalogo/*`) — público, sólo productos PUBLICADOS
 
@@ -157,11 +209,21 @@ Sólo ADMIN: `GET /admin/ping`, `GET/POST /admin/usuarios`, `GET/PUT /admin/usua
 La web expone un proxy same-origin `/api/*` hacia la API, así las cookies de sesión quedan en el dominio de la web (SameSite=Lax) y los server components pueden leerlas. Un middleware renueva el access token con el refresh token cuando vence.
 
 - Login en `/admin/login` (sólo ADMIN y OPERADOR).
-- Menú lateral: Dashboard (métricas + alerta de stock bajo el mínimo), Productos (tabla con búsqueda, filtros, paginación, acciones masivas, exportar/importar CSV; formulario con pestañas Datos / Variantes y stock / Imágenes con arrastrar para ordenar / SEO), Categorías (árbol), Marcas, Colecciones, Usuarios (sólo ADMIN: crear, editar, desactivar, cambiar rol, resetear contraseña), Pedidos (vacío hasta el prompt de checkout), Barra de promo (mensajes rotativos), Ópticas (red de ópticas socias con coordenadas para el mapa), Cupones, Mensajes (contacto, avisos de stock y newsletter), Configuración (sólo lectura).
+- Menú lateral: Dashboard (pedidos pendientes de pago, sin asignar, con plazo vencido, en curso, solicitudes; alerta de stock), Productos (tabla con búsqueda, filtros, paginación, acciones masivas, exportar/importar CSV; formulario con pestañas Datos / Variantes y stock / Imágenes con arrastrar para ordenar / SEO), Categorías (árbol), Marcas, Colecciones, Usuarios (sólo ADMIN: crear, editar, desactivar, cambiar rol, resetear contraseña; rol OPTICA con selector de óptica), **Pedidos**, **Cambios y devoluciones**, **Ópticas**, **Liquidaciones**, Barra de promo, Cupones, Mensajes, Configuración.
+- **Pedidos** (`/admin/pedidos`): resumen por estado, filtros por estado, pago, óptica (o sin asignar), línea, canal, medio de pago y fechas; búsqueda por número, email, nombre o DNI; exportación CSV. Detalle (`/admin/pedidos/[id]`): línea de tiempo (fecha, usuario, nota), notas internas, cambio de estado (con `forzar`), reasignación con las ópticas candidatas ordenadas por distancia (radio, cupo, rechazos) y motivo obligatorio, asignación automática, reenvío de emails, reembolso total/parcial, cancelación con devolución de stock, confirmación/rechazo de transferencias, factura, solicitudes del cliente (aprobar con nuevo pedido o reintegro / rechazar), reembolsos y emails enviados.
+- **Ópticas** (`/admin/opticas`): mapa Leaflet + OpenStreetMap con todas las ópticas y su radio de cobertura; ABM con razón social, CUIT, óptico responsable y matrícula, radio, comisión, capacidad diaria y estado; cupo usado hoy.
+- **Cambios y devoluciones** (`/admin/solicitudes`) y **Liquidaciones** (`/admin/liquidaciones?mes=AAAA-MM`, detalle por óptica).
+- **Configuración**: plazo de aceptación (horas hábiles), horario hábil y sábado hábil (editable por ADMIN).
+
+## Panel de la óptica (`/optica`)
+
+- Login en `/optica/login` (sólo rol OPTICA con óptica vinculada; el middleware renueva la sesión igual que en `/admin`).
+- Resumen (pendientes de aceptar, en curso, turnos de hoy), **Pedidos** con filtros por estado y fecha y búsqueda, detalle con ítems, receta (valores o archivo descargable), datos del cliente, historial y acciones: aceptar / no puedo tomarlo (con motivo), en armado, listo para retirar, enviado (con n.º de seguimiento), entregado y ajustado. **Agenda de turnos** (medición / ajuste / retiro, vinculables al pedido) y **Liquidación** mensual.
 
 ## Tienda pública
 
-- Rutas: `/` (home), `/sol` `/recetados` `/multifocales` `/accesorios` `/novedades` `/mas-vendidos`, `/coleccion/[slug]`, `/categoria/[slug]`, `/buscar?q=`, `/p/[slug]?v=[varianteId]` (ficha), `/opticas` (mapa Leaflet + listado + buscador por CP), `/faq`, `/cambios-y-devoluciones`, `/contacto`, `/como-funciona`, `/envios`, `/nosotros`, `/legal/{terminos,privacidad,arrepentimiento}`, `/checkout` (placeholder hasta el prompt 4), más `sitemap.xml` y `robots.txt`.
+- Rutas: `/` (home), `/sol` `/recetados` `/multifocales` `/accesorios` `/novedades` `/mas-vendidos`, `/coleccion/[slug]`, `/categoria/[slug]`, `/buscar?q=`, `/p/[slug]?v=[varianteId]` (ficha), `/opticas` (mapa Leaflet + listado + buscador por CP), `/faq`, `/cambios-y-devoluciones`, `/contacto`, `/como-funciona`, `/envios`, `/nosotros`, `/legal/{terminos,privacidad,arrepentimiento}`, `/checkout` (pantallas pendientes del prompt 4), más `sitemap.xml` y `robots.txt`.
+- `/cambios-y-devoluciones` incluye el formulario de solicitud: el cliente busca su pedido por número + email, ve sus solicitudes y pide un cambio o una devolución; el equipo la resuelve en `/admin/solicitudes` y el cliente recibe emails.
 - Catálogo con Server Components y caché (`revalidate` 60 s en home/listados/ficha, 300 s en ópticas). Filtros y orden viven en la URL (compartibles); scroll infinito con `?page=` en `replaceState`.
 - Carrito en `localStorage` (`vedere_carrito_v1`); si hay sesión (`/api/auth/me`), se mezcla con `/carrito` y se sincroniza con un `PUT` debounced. Vistos recientemente en `vedere_recientes_v1`.
 - Componentes compartidos y accesibles en `packages/ui` (Drawer con `<dialog>` nativo, botones de 44 px, foco visible, contraste AA).
@@ -176,6 +238,9 @@ pnpm test
 - `apps/api/test/catalogo.test.ts`: integración contra `TEST_DATABASE_URL` (vitest aplica las migraciones): alta de marca / categoría hija / colección / producto con 3 variantes e imágenes y lectura pública, SKU duplicado → 409 sin guardar, PUT parcial que no pisa el resto de los campos, archivar saca del público sin borrar, OPERADOR gestiona el catálogo (crea, edita, publica, archiva, borra) pero no usuarios, CSV exportado → importado sin errores, orden y filtros públicos, borrado en cascada.
 - `apps/api/test/usuarios.test.ts`: ABM de usuarios sólo ADMIN: alta con hash argon2id, filtros, email duplicado → 409, edición, cambio de rol (revoca sesiones), reset de contraseña (la vieja deja de servir), desactivar (no puede loguearse ni refrescar) y activar, protección del propio usuario, OPERADOR → 403 en todas las rutas.
 - `apps/api/test/storage.test.ts`: driver R2 real contra un servidor S3-compatible levantado en el test (sin cuenta de Cloudflare): sharp → WebP 320 / 800 / 1600, 3 `PutObject` firmados con SigV4 al bucket, URLs públicas, no agranda imágenes chicas, URL prefirmada para subida directa y `POST /admin/imagenes` multipart de punta a punta.
+- `apps/api/test/checkout.test.ts`: checkout y pagos (prompt 4): cotización, cupones, promociones, pedido por transferencia con comprobante, webhook de Mercado Pago (al aprobar queda ASIGNADO a una óptica), reservas de stock.
+- `apps/api/test/asignacion.test.ts` (unitario): elección de la óptica más cercana con radio y cupo (3 ópticas en CABA, pedido en Caballito → Flores), exclusiones, pausadas, horas hábiles (`sumarHorasHabiles`) y transiciones de estado.
+- `apps/api/test/opticas.test.ts` (integración, criterios de aceptación del prompt 5): con 3 ópticas en CABA un pedido en Caballito se asigna a la más cercana dentro de su radio al confirmar el pago (eventos PAGO/ASIGNACION, emails al cliente y a la óptica); la capacidad diaria desvía a la siguiente; un usuario OPTICA no ve pedidos de otra óptica ni por URL ni por API (403) y otros roles no entran a `/optica`; si la óptica rechaza pasa a la siguiente y el admin lo ve en la línea de tiempo, y sin cobertura queda sin asignar con aviso al admin; reasignación manual con motivo auditada; ciclo aceptar → en armado → listo → entregado con un evento y un email `ESTADO_*` por cambio, transición inválida → 409; envío a domicilio exige seguimiento; plazo vencido reasigna (`procesarVencidos`); agenda de turnos; la liquidación mensual coincide con la suma de los pedidos entregados por óptica; solicitud del cliente → aprobación con reintegro (DEVUELTO, reembolso manual) o con pedido nuevo sin cargo; filtros, búsqueda por DNI y CSV del listado; cancelación con devolución de stock.
 - Los tests de integración se saltean si no hay `TEST_DATABASE_URL`.
 
 ## Deploy en Railway
@@ -206,6 +271,12 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 | `R2_ENDPOINT`                                                                             | endpoint S3 alternativo (local: RustFS de docker-compose; o el servicio `storage`). Vacío = Cloudflare R2 de la cuenta        |
 | `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`, `RATE_LIMIT_MAX`, `RATE_LIMIT_AUTH_MAX`     | opcionales (ver `.env.example`)                                                                                               |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE`                                           | para el seed                                                                                                                  |
+| `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `MP_ENABLED`                                      | Mercado Pago (checkout, webhook y reembolsos). Sin token, MP queda deshabilitado                                              |
+| `RESERVA_STOCK_MINUTOS`, `GOOGLE_MAPS_API_KEY`                                            | reserva de stock durante el pago (30) y autocompletado de direcciones (opcional)                                              |
+| `RESEND_API_KEY`, `EMAIL_FROM`                                                            | emails transaccionales (estados del pedido, óptica, admin). Sin API key se registran como SIMULADO en `emails_enviados`       |
+| `ADMIN_NOTIFY_EMAIL`                                                                      | casilla que recibe los avisos de pedidos sin asignar y solicitudes de cambio                                                  |
+| `ASIGNACION_INTERVALO_MIN`                                                                | cada cuántos minutos se reasignan los pedidos con plazo de aceptación vencido (5)                                             |
+| `OPTICA_PASSWORD`                                                                         | sólo para el seed: crea un usuario OPTICA por óptica socia (`optica-<slug>@vedere.com.ar`)                                   |
 
 **web**
 
@@ -230,6 +301,8 @@ railway ssh --service api -- sh -c "cd /app && pnpm --filter @vedere/db exec tsx
 railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
 # sólo admin:
 railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false SEED_TIENDA=false pnpm --filter @vedere/db exec tsx prisma/seed.ts"
+# con usuarios OPTICA de prueba (uno por óptica socia, email optica-<slug>@vedere.com.ar):
+railway ssh --service api -- sh -c "cd /app && SEED_CATALOGO=false OPTICA_PASSWORD='clave-larga-de-prueba' pnpm --filter @vedere/db exec tsx prisma/seed.ts"
 ```
 
 ## Flujo de trabajo con Git

@@ -18,6 +18,8 @@ import pedidosRoutes from './pedidos.js';
 import promocionesRoutes from './promociones.js';
 import creadoresRoutes from './creadores.js';
 import configRoutes from './config.js';
+import solicitudesRoutes from './solicitudes.js';
+import liquidacionesRoutes from './liquidaciones.js';
 
 const adminRoutes: FastifyPluginAsync = async (app) => {
   // --- Catálogo y dashboard: staff (ADMIN u OPERADOR) ---
@@ -36,6 +38,8 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     await staff.register(cuponesRoutes, { prefix: '/cupones' });
     await staff.register(mensajesRoutes);
     await staff.register(pedidosRoutes, { prefix: '/pedidos' });
+    await staff.register(solicitudesRoutes, { prefix: '/solicitudes' });
+    await staff.register(liquidacionesRoutes, { prefix: '/liquidaciones' });
     await staff.register(promocionesRoutes, { prefix: '/promociones' });
     await staff.register(creadoresRoutes, { prefix: '/creadores' });
     await staff.register(configRoutes); // GET /config-tienda (staff), PUT sólo ADMIN

@@ -72,7 +72,10 @@ const authRoutes: FastifyPluginAsync = async (app) => {
   app.post('/login', { config: authLimit }, async (request, reply) => {
     const body = parse(loginSchema, request.body);
 
-    const user = await prisma.user.findUnique({ where: { email: body.email } });
+    const user = await prisma.user.findUnique({
+      where: { email: body.email },
+      include: { optica: { select: { id: true, nombre: true, slug: true } } },
+    });
     const hash = user?.passwordHash ?? (await DUMMY_HASH_PROMISE);
     const valid = await argon2.verify(hash, body.password);
 
@@ -122,7 +125,10 @@ const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/me', { onRequest: [app.authenticate] }, async (request, reply) => {
-    const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.sub },
+      include: { optica: { select: { id: true, nombre: true, slug: true } } },
+    });
     if (!user || !user.activo) {
       clearSessionCookies(app, reply);
       throw Errors.unauthorized();

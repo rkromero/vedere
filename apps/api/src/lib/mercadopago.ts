@@ -137,6 +137,29 @@ export async function obtenerPago(cfg: MpConfig, paymentId: string): Promise<MpP
   return mpFetch<MpPayment>(cfg, `/v1/payments/${encodeURIComponent(paymentId)}`);
 }
 
+export interface MpRefund {
+  id: number;
+  payment_id: number;
+  amount: number;
+  status: 'approved' | 'in_process' | 'rejected' | 'cancelled' | string;
+  date_created?: string;
+}
+
+/**
+ * Reembolso total (sin `amount`) o parcial de un pago. Idempotente por clave (pedido + monto + intento).
+ * Ref: POST /v1/payments/{id}/refunds.
+ */
+export async function reembolsarPagoMP(
+  cfg: MpConfig,
+  input: { paymentId: string; monto?: number | null; idempotencyKey: string },
+): Promise<MpRefund> {
+  return mpFetch<MpRefund>(cfg, `/v1/payments/${encodeURIComponent(input.paymentId)}/refunds`, {
+    method: 'POST',
+    headers: { 'X-Idempotency-Key': input.idempotencyKey },
+    body: JSON.stringify(input.monto ? { amount: Math.round(input.monto * 100) / 100 } : {}),
+  });
+}
+
 /** Mapea el estado de Mercado Pago al estado de pago del pedido. */
 export function mapearEstado(status: MpPaymentStatus): 'PENDIENTE' | 'APROBADO' | 'RECHAZADO' | 'REEMBOLSADO' {
   switch (status) {

@@ -284,7 +284,10 @@ describe.skipIf(!hasDb)('checkout (integración)', () => {
 
     let p = await prisma.pedido.findUniqueOrThrow({ where: { id: pedido.id }, include: { pagos: true, reservas: true } });
     expect(p.estadoPago).toBe('APROBADO');
-    expect(p.estado).toBe('CONFIRMADO');
+    // Prompt 5: al aprobarse el pago se asigna automáticamente a la óptica más cercana (a <1 km).
+    expect(p.estado).toBe('ASIGNADO');
+    expect(p.opticaId).toBe(ids.optica);
+    expect(p.asignadoEn).not.toBeNull();
     expect(p.stockDescontado).toBe(true);
     expect(p.pagadoEn).not.toBeNull();
     expect(p.pagos.filter((x) => x.externoId === '5001')).toHaveLength(1);
@@ -414,14 +417,21 @@ describe.skipIf(!hasDb)('checkout (integración)', () => {
     expect(ap2.json().yaEstaba).toBe(true);
     expect((await prisma.variante.findUniqueOrThrow({ where: { id: ids.solB } })).stock).toBe(stockAntes - 1);
 
-    // Factura y estado.
+    // Factura (PUT) y estado (POST /estado, forzado porque la óptica todavía no aceptó).
     const upd = await app.inject({
       method: 'PUT',
       url: `/admin/pedidos/${pedido.id}`,
       cookies: staffCookie,
-      payload: { numeroFactura: 'A-0001-00001234', estado: 'EN_PREPARACION' },
+      payload: { numeroFactura: 'A-0001-00001234' },
     });
-    expect(upd.json()).toMatchObject({ numeroFactura: 'A-0001-00001234', estado: 'EN_PREPARACION' });
+    expect(upd.json()).toMatchObject({ numeroFactura: 'A-0001-00001234', estado: 'ASIGNADO' });
+    const est = await app.inject({
+      method: 'POST',
+      url: `/admin/pedidos/${pedido.id}/estado`,
+      cookies: staffCookie,
+      payload: { estado: 'EN_ARMADO', forzar: true, nota: 'test' },
+    });
+    expect(est.json()).toMatchObject({ estado: 'EN_ARMADO' });
 
     // Cancelar repone stock.
     const can = await app.inject({ method: 'POST', url: `/admin/pedidos/${pedido.id}/cancelar`, cookies: staffCookie, payload: { motivo: 'test' } });

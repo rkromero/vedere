@@ -60,6 +60,14 @@ const envSchema = z.object({
 
   // Google Places / Geocoding (autocompletado y normalización de direcciones). Opcional.
   GOOGLE_MAPS_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+
+  // Emails transaccionales (Resend). Sin RESEND_API_KEY los emails se registran como SIMULADO.
+  RESEND_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  EMAIL_FROM: z.preprocess(emptyToUndefined, z.string().default('Vedere <hola@vedere.com.ar>')),
+  // Casilla del equipo para avisos (pedidos sin asignar, solicitudes de cambio).
+  ADMIN_NOTIFY_EMAIL: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Cada cuántos minutos se revisan los pedidos cuyo plazo de aceptación venció.
+  ASIGNACION_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof envSchema>;

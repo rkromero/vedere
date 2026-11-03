@@ -19,6 +19,8 @@ export interface SessionUser {
   telefono: string | null;
   rol: Rol;
   activo: boolean;
+  /** Sólo rol OPTICA: óptica socia a la que pertenece. */
+  opticaId?: string | null;
   createdAt: Date;
 }
 
@@ -26,9 +28,11 @@ export interface AccessPayload {
   sub: string;
   email: string;
   rol: Rol;
+  nombre?: string;
+  opticaId?: string | null;
 }
 
-export function toPublicUser(user: SessionUser) {
+export function toPublicUser(user: SessionUser & { optica?: { id: string; nombre: string; slug: string } | null }) {
   return {
     id: user.id,
     email: user.email,
@@ -36,6 +40,8 @@ export function toPublicUser(user: SessionUser) {
     telefono: user.telefono,
     rol: user.rol,
     activo: user.activo,
+    opticaId: user.opticaId ?? null,
+    optica: user.optica ? { id: user.optica.id, nombre: user.optica.nombre, slug: user.optica.slug } : null,
     createdAt: user.createdAt,
   };
 }
@@ -73,7 +79,13 @@ export async function issueSession(
   user: SessionUser,
 ): Promise<void> {
   const env = app.env;
-  const payload: AccessPayload = { sub: user.id, email: user.email, rol: user.rol };
+  const payload: AccessPayload = {
+    sub: user.id,
+    email: user.email,
+    rol: user.rol,
+    nombre: user.nombre,
+    opticaId: user.opticaId ?? null,
+  };
   const accessToken = app.jwt.sign(payload, { expiresIn: env.ACCESS_TOKEN_TTL });
 
   const refreshToken = randomBytes(48).toString('base64url');

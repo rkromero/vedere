@@ -11,6 +11,9 @@ import { calcularCarrito, cuotasParaCarrito } from './promos.js';
 import type { CuponPromo, ItemPromo, LineaPromo, ReglaPromo, ResultadoCalculo } from './promos.js';
 import { disponibilidad, liberarReservasVencidas } from './reservas.js';
 import { dec } from './serialize.js';
+import { SISTEMA, onPagoAprobado, pedidoParaEmail, registrarEvento } from './asignacion.js';
+import type { Actor } from './asignacion.js';
+import { emailEstadoCliente } from './email.js';
 import type { pedidoInput, recetaInput } from '../schemas/checkout.js';
 import type { z } from 'zod';
 
@@ -271,7 +274,19 @@ export const pedidoInclude = {
 
 export type PedidoFull = Prisma.PedidoGetPayload<{ include: typeof pedidoInclude }>;
 
-async function siguienteNumero(db: Db): Promise<string> {
+/** Detalle para el backoffice y el panel de la óptica: línea de tiempo, solicitudes, reembolsos, emails y turnos. */
+export const pedidoIncludeDetalle = {
+  ...pedidoInclude,
+  eventos: { orderBy: { createdAt: 'asc' }, include: { optica: { select: { id: true, nombre: true } } } },
+  solicitudes: { orderBy: { createdAt: 'desc' } },
+  reembolsos: { orderBy: { createdAt: 'asc' } },
+  emails: { orderBy: { createdAt: 'asc' } },
+  turnos: { orderBy: { fecha: 'asc' }, include: { optica: { select: { id: true, nombre: true } } } },
+} satisfies Prisma.PedidoInclude;
+
+export type PedidoDetalle = Prisma.PedidoGetPayload<{ include: typeof pedidoIncludeDetalle }>;
+
+export async function siguienteNumero(db: Db): Promise<string> {
   const filas = await db.$queryRawUnsafe<Array<{ n: bigint | number }>>(
     `SELECT nextval('pedidos_numero_seq') AS n`,
   );
@@ -558,8 +573,12 @@ async function registrarPago(tx: Prisma.TransactionClient, pedidoId: string, inf
  * Aprueba el pago de un pedido. Idempotente: el stock se descuenta una sola vez (bandera
  * `stockDescontado` tomada con un UPDATE condicional), repetir la llamada no cambia nada.
  */
-export async function aprobarPago(pedidoId: string, info: PagoInfo): Promise<{ pedido: PedidoFull; yaEstaba: boolean }> {
-  return prisma.$transaction(async (tx) => {
+export async function aprobarPago(
+  pedidoId: string,
+  info: PagoInfo,
+  ctx: { env?: Env; actor?: Actor } = {},
+): Promise<{ pedido: PedidoFull; yaEstaba: boolean }> {
+  const r = await prisma.$transaction(async (tx) => {
     const pedido = await tx.pedido.findUnique({ where: { id: pedidoId }, include: { items: true } });
     if (!pedido) throw Errors.notFound('Pedido no encontrado');
     await registrarPago(tx, pedidoId, info, 'APROBADO');
@@ -570,7 +589,7 @@ export async function aprobarPago(pedidoId: string, info: PagoInfo): Promise<{ p
         stockDescontado: true,
         estadoPago: 'APROBADO',
         pagadoEn: new Date(),
-        ...(pedido.estado === 'PENDIENTE_PAGO' ? { estado: 'CONFIRMADO' } : {}),
+        ...(pedido.estado === 'PENDIENTE_PAGO' ? { estado: 'PAGADO' } : {}),
         ...(info.cuotas ? { cuotas: info.cuotas } : {}),
       },
     });
@@ -580,6 +599,15 @@ export async function aprobarPago(pedidoId: string, info: PagoInfo): Promise<{ p
       const p = await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
       return { pedido: p, yaEstaba: true };
     }
+    await registrarEvento(tx, {
+      pedidoId,
+      tipo: 'PAGO',
+      estadoAnterior: pedido.estado,
+      estadoNuevo: pedido.estado === 'PENDIENTE_PAGO' ? 'PAGADO' : pedido.estado,
+      actor: ctx.actor ?? SISTEMA,
+      nota: `Pago aprobado (${info.proveedor}${info.externoId ? ` #${info.externoId}` : ''}) por $${Math.round(info.monto).toLocaleString('es-AR')}`,
+      datos: { proveedor: info.proveedor, externoId: info.externoId ?? null, monto: info.monto, cuotas: info.cuotas ?? null },
+    });
 
     const faltantes: string[] = [];
     for (const item of pedido.items) {
@@ -606,10 +634,16 @@ export async function aprobarPago(pedidoId: string, info: PagoInfo): Promise<{ p
     const p = await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
     return { pedido: p, yaEstaba: false };
   });
+  // Primera aprobación: email de pago al cliente y asignación automática a la óptica más cercana.
+  if (!r.yaEstaba && ctx.env) {
+    const asignado = await onPagoAprobado(r.pedido, ctx.env, ctx.actor ?? SISTEMA);
+    return { pedido: asignado, yaEstaba: false };
+  }
+  return r;
 }
 
 /** Rechazo: el pedido sigue pendiente (puede reintentar) salvo que ya esté aprobado. */
-export async function rechazarPago(pedidoId: string, info: PagoInfo): Promise<PedidoFull> {
+export async function rechazarPago(pedidoId: string, info: PagoInfo, ctx: { actor?: Actor } = {}): Promise<PedidoFull> {
   return prisma.$transaction(async (tx) => {
     const pedido = await tx.pedido.findUnique({ where: { id: pedidoId } });
     if (!pedido) throw Errors.notFound('Pedido no encontrado');
@@ -617,30 +651,49 @@ export async function rechazarPago(pedidoId: string, info: PagoInfo): Promise<Pe
     if (pedido.estadoPago !== 'APROBADO') {
       await tx.pedido.update({ where: { id: pedidoId }, data: { estadoPago: 'RECHAZADO' } });
     }
-    return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
-  });
-}
-
-/** Reembolso / contracargo: repone stock si se había descontado y cancela el pedido. */
-export async function reembolsarPago(pedidoId: string, info: PagoInfo): Promise<PedidoFull> {
-  return prisma.$transaction(async (tx) => {
-    const pedido = await tx.pedido.findUnique({ where: { id: pedidoId }, include: { items: true } });
-    if (!pedido) throw Errors.notFound('Pedido no encontrado');
-    await registrarPago(tx, pedidoId, info, 'REEMBOLSADO');
-    if (pedido.estadoPago === 'REEMBOLSADO') {
-      return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
-    }
-    if (pedido.stockDescontado) await reponerStock(tx, pedido.items);
-    await tx.reservaStock.updateMany({ where: { pedidoId, estado: 'ACTIVA' }, data: { estado: 'LIBERADA' } });
-    await tx.pedido.update({
-      where: { id: pedidoId },
-      data: { estadoPago: 'REEMBOLSADO', estado: 'CANCELADO', stockDescontado: false },
+    await registrarEvento(tx, {
+      pedidoId,
+      tipo: 'PAGO',
+      actor: ctx.actor ?? SISTEMA,
+      nota: `Pago rechazado (${info.proveedor}${info.externoId ? ` #${info.externoId}` : ''})`,
+      datos: { proveedor: info.proveedor, externoId: info.externoId ?? null, estado: 'RECHAZADO' },
     });
     return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
   });
 }
 
-async function reponerStock(tx: Prisma.TransactionClient, items: Array<{ varianteId: string | null; productoId: string | null; cantidad: number }>) {
+/** Reembolso / contracargo total notificado por el proveedor: repone stock si se había descontado y cancela el pedido. */
+export async function reembolsarPago(pedidoId: string, info: PagoInfo, ctx: { env?: Env; actor?: Actor } = {}): Promise<PedidoFull> {
+  const p = await prisma.$transaction(async (tx) => {
+    const pedido = await tx.pedido.findUnique({ where: { id: pedidoId }, include: { items: true } });
+    if (!pedido) throw Errors.notFound('Pedido no encontrado');
+    await registrarPago(tx, pedidoId, info, 'REEMBOLSADO');
+    if (pedido.estadoPago === 'REEMBOLSADO') {
+      return { pedido: await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude }), yaEstaba: true };
+    }
+    if (pedido.stockDescontado) await reponerStock(tx, pedido.items);
+    await tx.reservaStock.updateMany({ where: { pedidoId, estado: 'ACTIVA' }, data: { estado: 'LIBERADA' } });
+    const nuevoEstado = pedido.estado === 'ENTREGADO' || pedido.estado === 'DEVUELTO' ? 'DEVUELTO' : 'CANCELADO';
+    await tx.pedido.update({
+      where: { id: pedidoId },
+      data: { estadoPago: 'REEMBOLSADO', estado: nuevoEstado, stockDescontado: false, reembolsado: pedido.total },
+    });
+    await registrarEvento(tx, {
+      pedidoId,
+      tipo: 'REEMBOLSO',
+      estadoAnterior: pedido.estado,
+      estadoNuevo: nuevoEstado,
+      actor: ctx.actor ?? SISTEMA,
+      nota: `Reembolso total informado por ${info.proveedor}${info.externoId ? ` (#${info.externoId})` : ''}`,
+      datos: { proveedor: info.proveedor, externoId: info.externoId ?? null, monto: info.monto },
+    });
+    return { pedido: await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude }), yaEstaba: false };
+  });
+  if (!p.yaEstaba && ctx.env) await emailEstadoCliente(ctx.env, pedidoParaEmail(p.pedido), p.pedido.estado);
+  return p.pedido;
+}
+
+export async function reponerStock(tx: Prisma.TransactionClient, items: Array<{ varianteId: string | null; productoId: string | null; cantidad: number }>) {
   for (const item of items) {
     if (item.varianteId) {
       await tx.variante.updateMany({ where: { id: item.varianteId }, data: { stock: { increment: item.cantidad } } });
@@ -651,13 +704,19 @@ async function reponerStock(tx: Prisma.TransactionClient, items: Array<{ variant
   }
 }
 
-/** Cancela un pedido: libera reservas, repone stock si ya estaba descontado y devuelve el uso del cupón. */
-export async function cancelarPedido(pedidoId: string, opts: { motivo?: string; porId?: string | null } = {}): Promise<PedidoFull> {
-  return prisma.$transaction(async (tx) => {
+/**
+ * Cancela un pedido: libera reservas, repone stock si ya estaba descontado, devuelve el uso del cupón,
+ * registra el evento y (si hay env) avisa al cliente por email.
+ */
+export async function cancelarPedido(
+  pedidoId: string,
+  opts: { motivo?: string; porId?: string | null; actor?: Actor; env?: Env; sinEmail?: boolean } = {},
+): Promise<PedidoFull> {
+  const r = await prisma.$transaction(async (tx) => {
     const pedido = await tx.pedido.findUnique({ where: { id: pedidoId }, include: { items: true, cuponUso: true } });
     if (!pedido) throw Errors.notFound('Pedido no encontrado');
     if (pedido.estado === 'CANCELADO') {
-      return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
+      return { pedido: await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude }), yaEstaba: true };
     }
     await tx.reservaStock.updateMany({ where: { pedidoId, estado: 'ACTIVA' }, data: { estado: 'LIBERADA' } });
     if (pedido.stockDescontado) await reponerStock(tx, pedido.items);
@@ -669,17 +728,35 @@ export async function cancelarPedido(pedidoId: string, opts: { motivo?: string; 
       data: {
         estado: 'CANCELADO',
         stockDescontado: false,
+        aceptarAntesDe: null,
         notasInternas: opts.motivo
           ? `${pedido.notasInternas ? pedido.notasInternas + '\n' : ''}Cancelado: ${opts.motivo}`
           : pedido.notasInternas,
       },
     });
-    return tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude });
+    await registrarEvento(tx, {
+      pedidoId,
+      tipo: 'ESTADO',
+      estadoAnterior: pedido.estado,
+      estadoNuevo: 'CANCELADO',
+      opticaId: pedido.opticaId,
+      actor: opts.actor ?? (opts.porId ? { id: opts.porId, nombre: null, rol: null } : SISTEMA),
+      nota: opts.motivo ?? null,
+      datos: { stockRepuesto: pedido.stockDescontado, unidades: pedido.items.reduce((a, i) => a + i.cantidad, 0) },
+    });
+    return { pedido: await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: pedidoInclude }), yaEstaba: false };
   });
+  if (!r.yaEstaba && opts.env && !opts.sinEmail) {
+    await emailEstadoCliente(opts.env, pedidoParaEmail(r.pedido), 'CANCELADO', { nota: opts.motivo ?? null });
+  }
+  return r.pedido;
 }
 
 /** Procesa un pago de Mercado Pago (desde el webhook o una consulta manual). Idempotente. */
-export async function procesarPagoMP(payment: MpPayment): Promise<{ pedido: PedidoFull | null; estado: EstadoPago; yaEstaba: boolean }> {
+export async function procesarPagoMP(
+  payment: MpPayment,
+  env?: Env,
+): Promise<{ pedido: PedidoFull | null; estado: EstadoPago; yaEstaba: boolean }> {
   const pedidoId = payment.external_reference ?? (payment.metadata?.pedido_id as string | undefined) ?? null;
   const estado = mapearEstado(payment.status);
   if (!pedidoId) return { pedido: null, estado, yaEstaba: false };
@@ -702,11 +779,11 @@ export async function procesarPagoMP(payment: MpPayment): Promise<{ pedido: Pedi
     },
   };
   if (estado === 'APROBADO') {
-    const r = await aprobarPago(pedidoId, info);
+    const r = await aprobarPago(pedidoId, info, { env });
     return { pedido: r.pedido, estado, yaEstaba: r.yaEstaba };
   }
   if (estado === 'RECHAZADO') return { pedido: await rechazarPago(pedidoId, info), estado, yaEstaba: false };
-  if (estado === 'REEMBOLSADO') return { pedido: await reembolsarPago(pedidoId, info), estado, yaEstaba: false };
+  if (estado === 'REEMBOLSADO') return { pedido: await reembolsarPago(pedidoId, info, { env }), estado, yaEstaba: false };
   // Pendiente / en proceso: se registra el intento sin tocar el pedido.
   await prisma.$transaction((tx) => registrarPago(tx, pedidoId, info, 'PENDIENTE'));
   return { pedido: await prisma.pedido.findUnique({ where: { id: pedidoId }, include: pedidoInclude }), estado, yaEstaba: false };
@@ -733,7 +810,62 @@ export function serializeReceta(r: NonNullable<PedidoFull['receta']>) {
   };
 }
 
-export function serializePedido(p: PedidoFull, opts: { admin?: boolean } = {}) {
+export function serializeEvento(e: PedidoDetalle['eventos'][number]) {
+  return {
+    id: e.id,
+    tipo: e.tipo,
+    estadoAnterior: e.estadoAnterior,
+    estadoNuevo: e.estadoNuevo,
+    optica: e.optica,
+    actor: { id: e.userId, nombre: e.actorNombre, rol: e.actorRol },
+    nota: e.nota,
+    datos: e.datos,
+    createdAt: e.createdAt,
+  };
+}
+
+export function serializeSolicitud(s: PedidoDetalle['solicitudes'][number]) {
+  return {
+    id: s.id,
+    pedidoId: s.pedidoId,
+    tipo: s.tipo,
+    motivo: s.motivo,
+    detalle: s.detalle,
+    estado: s.estado,
+    resolucion: s.resolucion,
+    nuevoPedidoId: s.nuevoPedidoId,
+    respuesta: s.respuesta,
+    resueltoPorId: s.resueltoPorId,
+    resueltoEn: s.resueltoEn,
+    createdAt: s.createdAt,
+  };
+}
+
+export function serializeTurno(t: PedidoDetalle['turnos'][number]) {
+  return {
+    id: t.id,
+    opticaId: t.opticaId,
+    optica: t.optica,
+    pedidoId: t.pedidoId,
+    tipo: t.tipo,
+    estado: t.estado,
+    fecha: t.fecha,
+    duracionMin: t.duracionMin,
+    clienteNombre: t.clienteNombre,
+    clienteTelefono: t.clienteTelefono,
+    notas: t.notas,
+    createdAt: t.createdAt,
+  };
+}
+
+type PedidoSerializable = PedidoFull & Partial<Pick<PedidoDetalle, 'eventos' | 'solicitudes' | 'reembolsos' | 'emails' | 'turnos'>>;
+
+/**
+ * Serializa un pedido. `admin`: datos internos (pagos, notas, auditoría). `optica`: lo que ve la óptica
+ * socia (cliente completo, receta, comisión) sin pagos ni notas internas. Si vienen cargados, incluye
+ * línea de tiempo, solicitudes, reembolsos, turnos y (sólo admin) emails.
+ */
+export function serializePedido(p: PedidoSerializable, opts: { admin?: boolean; optica?: boolean } = {}) {
   const pagoActual = p.pagos[p.pagos.length - 1] ?? null;
   const base = {
     id: p.id,
@@ -742,9 +874,15 @@ export function serializePedido(p: PedidoFull, opts: { admin?: boolean } = {}) {
     estadoPago: p.estadoPago,
     metodoPago: p.metodoPago,
     cuotas: p.cuotas,
+    canal: p.canal,
     createdAt: p.createdAt,
     pagadoEn: p.pagadoEn,
     reservaExpiraEn: p.reservaExpiraEn,
+    asignadoEn: p.asignadoEn,
+    aceptadoEn: p.aceptadoEn,
+    enviadoEn: p.enviadoEn,
+    entregadoEn: p.entregadoEn,
+    numeroSeguimiento: p.numeroSeguimiento,
     cliente: { email: p.email, nombre: p.nombre, dni: p.dni, telefono: p.telefono },
     entrega: {
       modalidad: p.modalidad,
@@ -809,15 +947,52 @@ export function serializePedido(p: PedidoFull, opts: { admin?: boolean } = {}) {
         }
       : null,
   };
-  if (!opts.admin) return base;
+  const detalle = {
+    eventos: p.eventos?.map(serializeEvento),
+    solicitudes: p.solicitudes?.map(serializeSolicitud),
+    turnos: p.turnos?.map(serializeTurno),
+    reembolsos: p.reembolsos?.map((r) => ({
+      id: r.id,
+      proveedor: r.proveedor,
+      externoId: r.externoId,
+      monto: dec(r.monto) ?? 0,
+      motivo: r.motivo,
+      estado: r.estado,
+      creadoPorId: r.creadoPorId,
+      createdAt: r.createdAt,
+    })),
+    reembolsado: dec(p.reembolsado) ?? 0,
+  };
+  if (opts.optica) {
+    return {
+      ...base,
+      ...detalle,
+      aceptarAntesDe: p.aceptarAntesDe,
+      comision: { porcentaje: dec(p.comisionPct), monto: dec(p.comisionMonto) },
+    };
+  }
+  if (!opts.admin) return { ...base, solicitudes: detalle.solicitudes };
   return {
     ...base,
+    ...detalle,
     userId: p.userId,
     placeId: p.placeId,
     stockDescontado: p.stockDescontado,
     notasInternas: p.notasInternas,
     updatedAt: p.updatedAt,
+    aceptarAntesDe: p.aceptarAntesDe,
+    opticasExcluidas: p.opticasExcluidas,
+    comision: { porcentaje: dec(p.comisionPct), monto: dec(p.comisionMonto) },
     creadorId: p.cuponUso?.cupon.creadorId ?? null,
+    emails: p.emails?.map((e) => ({
+      id: e.id,
+      tipo: e.tipo,
+      para: e.para,
+      asunto: e.asunto,
+      estado: e.estado,
+      error: e.error,
+      createdAt: e.createdAt,
+    })),
     pagos: p.pagos.map((pg) => ({
       id: pg.id,
       metodo: pg.metodo,

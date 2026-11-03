@@ -1,5 +1,6 @@
 import { prisma } from '@vedere/db';
 import { buildApp } from './app.js';
+import { procesarVencidos } from './lib/asignacion.js';
 import { liberarReservasVencidas } from './lib/reservas.js';
 
 async function main() {
@@ -14,9 +15,18 @@ async function main() {
   }, 60_000);
   reservasTimer.unref();
 
+  // Pedidos asignados que la óptica no aceptó en el plazo (horas hábiles): pasan a la siguiente.
+  const asignacionTimer = setInterval(() => {
+    procesarVencidos(app.env)
+      .then((n) => n > 0 && app.log.info({ reasignados: n }, 'Pedidos con plazo de aceptación vencido reasignados'))
+      .catch((err) => app.log.error({ err }, 'Error reasignando pedidos vencidos'));
+  }, app.env.ASIGNACION_INTERVALO_MIN * 60_000);
+  asignacionTimer.unref();
+
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'Apagando API...');
     clearInterval(reservasTimer);
+    clearInterval(asignacionTimer);
     await app.close();
     await prisma.$disconnect();
     process.exit(0);

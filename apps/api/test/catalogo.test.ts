@@ -326,12 +326,21 @@ describe.skipIf(!hasDb)('catálogo (integración)', () => {
       password: 'password123',
     });
     expect(creado.statusCode).toBe(201);
+    // Pasar a OPTICA sin óptica vinculada es un 400; con óptica, 200.
+    const sinOptica = await put(`/admin/usuarios/${creado.json().id}`, { rol: 'OPTICA', activo: false });
+    expect(sinOptica.statusCode).toBe(400);
+    const optica = await prisma.optica.upsert({
+      where: { slug: 'optica-roles' },
+      update: {},
+      create: { nombre: 'Óptica Roles', slug: 'optica-roles', direccion: 'Calle 1', localidad: 'CABA', provincia: 'Buenos Aires', codigoPostal: '1425' },
+    });
     const cambio = await put(`/admin/usuarios/${creado.json().id}`, {
       rol: 'OPTICA',
+      opticaId: optica.id,
       activo: false,
     });
     expect(cambio.statusCode).toBe(200);
-    expect(cambio.json()).toMatchObject({ rol: 'OPTICA', activo: false });
+    expect(cambio.json()).toMatchObject({ rol: 'OPTICA', activo: false, opticaId: optica.id });
     const reset = await post(`/admin/usuarios/${creado.json().id}/password`, {
       password: 'otraclave123',
     });

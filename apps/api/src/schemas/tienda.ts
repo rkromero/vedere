@@ -41,6 +41,21 @@ export const opticaInput = z.object({
   horarios: nullableStr(200),
   activa: z.boolean().default(true),
   orden: z.number().int().min(0).default(0),
+  // Prompt 5: datos fiscales, cobertura, responsable técnico, comisión y capacidad.
+  razonSocial: nullableStr(160),
+  cuit: z
+    .string()
+    .trim()
+    .regex(/^\d{2}-?\d{8}-?\d$/, 'CUIT inválido (11 dígitos, ej. 30-12345678-9)')
+    .transform((v) => v.replace(/\D/g, '').replace(/^(\d{2})(\d{8})(\d)$/, '$1-$2-$3'))
+    .nullable()
+    .optional()
+    .or(z.literal('').transform(() => null)),
+  radioKm: z.number().min(0.5, 'Radio mínimo 0,5 km').max(500).default(10),
+  opticoResponsable: nullableStr(120),
+  matricula: nullableStr(40),
+  comisionPct: z.number().min(0).max(100).default(0),
+  capacidadDiaria: z.number().int().min(0).max(1000).default(20),
 });
 export const opticaUpdate = partialSinDefaults(opticaInput.shape);
 

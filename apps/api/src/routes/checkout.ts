@@ -16,18 +16,22 @@ import {
   procesarPagoMP,
   serializePedido,
   serializeReceta,
+  serializeSolicitud,
 } from '../lib/pedidos.js';
+import { crearSolicitud } from '../lib/solicitudes.js';
 import { putObject } from '../lib/storage.js';
 import { parse } from '../lib/validate.js';
 import { serializeOptica } from './catalogo.js';
 import {
   RECETA_TIPOS,
+  buscarPedidoQuery,
   cotizarInput,
   geocodificarInput,
   opticaQuery,
   pedidoInput,
   pedidoPublicoQuery,
   placesQuery,
+  solicitudInput,
 } from '../schemas/checkout.js';
 
 const formRateLimit = { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } };
@@ -160,7 +164,10 @@ const checkoutRoutes: FastifyPluginAsync = async (app) => {
   /** Detalle público del pedido: el id (cuid) actúa como clave; si hay sesión se exige que sea del usuario o coincida el email. */
   app.get<{ Params: { id: string } }>('/pedidos/:id', consultaRateLimit, async (request) => {
     const q = parse(pedidoPublicoQuery, request.query);
-    const p = await prisma.pedido.findUnique({ where: { id: request.params.id }, include: pedidoInclude });
+    const p = await prisma.pedido.findUnique({
+      where: { id: request.params.id },
+      include: { ...pedidoInclude, solicitudes: { orderBy: { createdAt: 'desc' } } },
+    });
     if (!p) throw Errors.notFound('Pedido no encontrado');
     if (p.userId && request.user?.sub !== p.userId && q.email !== p.email) {
       throw Errors.forbidden('Este pedido pertenece a otra cuenta');
@@ -237,7 +244,7 @@ const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const payment = await obtenerPago(cfg, dataId);
-      const r = await procesarPagoMP(payment);
+      const r = await procesarPagoMP(payment, app.env);
       await prisma.eventoWebhook.update({
         where: { id: evento.id },
         data: {
@@ -268,11 +275,42 @@ const checkoutRoutes: FastifyPluginAsync = async (app) => {
     const data = (await res.json()) as { results?: Array<Parameters<typeof procesarPagoMP>[0]> };
     let actual = p;
     for (const pago of data.results ?? []) {
-      const r = await procesarPagoMP(pago);
+      const r = await procesarPagoMP(pago, app.env);
       if (r.pedido) actual = r.pedido;
       if (r.estado === 'APROBADO') break;
     }
     return serializePedido(actual);
+  });
+
+  // ---------- Cambios y devoluciones ----------
+
+  /** El cliente pide un cambio o devolución de un pedido recibido (cuenta o email del pedido). */
+  app.post<{ Params: { id: string } }>('/pedidos/:id/solicitudes', formRateLimit, async (request, reply) => {
+    const body = parse(solicitudInput, request.body);
+    if (body.web) return reply.status(201).send({ ok: true }); // honeypot
+    const r = await crearSolicitud(
+      request.params.id,
+      {
+        tipo: body.tipo,
+        motivo: body.motivo,
+        detalle: body.detalle ?? null,
+        email: body.email ?? request.user?.email ?? null,
+        userId: request.user?.sub ?? null,
+      },
+      app.env,
+    );
+    return reply.status(201).send({ solicitud: serializeSolicitud(r.solicitud), pedido: serializePedido(r.pedido) });
+  });
+
+  /** Busca un pedido por número + email (para pedir un cambio sin cuenta). */
+  app.get('/pedidos/buscar', consultaRateLimit, async (request) => {
+    const q = parse(buscarPedidoQuery, request.query);
+    const p = await prisma.pedido.findFirst({
+      where: { numero: q.numero.toUpperCase(), email: q.email },
+      include: { ...pedidoInclude, solicitudes: { orderBy: { createdAt: 'desc' } } },
+    });
+    if (!p) throw Errors.notFound('No encontramos un pedido con ese número y email');
+    return serializePedido(p);
   });
 };
 

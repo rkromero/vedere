@@ -3,19 +3,34 @@ import type { Linea } from '@/lib/format';
 
 export type Modalidad = 'RETIRO_OPTICA' | 'ENVIO_DOMICILIO';
 export type MetodoPago = 'MERCADO_PAGO' | 'MERCADO_PAGO_BILLETERA' | 'TRANSFERENCIA';
-export type EstadoPedido = 'PENDIENTE_PAGO' | 'CONFIRMADO' | 'EN_PREPARACION' | 'LISTO' | 'ENTREGADO' | 'CANCELADO';
+export type EstadoPedido =
+  | 'PENDIENTE_PAGO'
+  | 'PAGADO'
+  | 'ASIGNADO'
+  | 'ACEPTADO'
+  | 'EN_ARMADO'
+  | 'LISTO'
+  | 'ENVIADO'
+  | 'ENTREGADO'
+  | 'CANCELADO'
+  | 'DEVUELTO';
 export type EstadoPago = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO' | 'REEMBOLSADO';
 export type ModoReceta = 'VALORES' | 'ARCHIVO' | 'OPTICA';
 
 export const LINEAS_CON_RECETA: Linea[] = ['RECETADO', 'MULTIFOCAL'];
 
+/** Etiquetas para el cliente (la tienda); el admin usa las de lib/pedidos. */
 export const ESTADO_PEDIDO_LABEL: Record<EstadoPedido, string> = {
   PENDIENTE_PAGO: 'Pendiente de pago',
-  CONFIRMADO: 'Confirmado',
-  EN_PREPARACION: 'En preparación',
-  LISTO: 'Listo para retirar / enviar',
+  PAGADO: 'Pago confirmado',
+  ASIGNADO: 'En tu óptica',
+  ACEPTADO: 'Confirmado por tu óptica',
+  EN_ARMADO: 'En armado',
+  LISTO: 'Listo para retirar',
+  ENVIADO: 'Enviado',
   ENTREGADO: 'Entregado',
   CANCELADO: 'Cancelado',
+  DEVUELTO: 'Devuelto',
 };
 export const ESTADO_PAGO_LABEL: Record<EstadoPago, string> = {
   PENDIENTE: 'Pendiente',

@@ -218,6 +218,8 @@ export const usuarioInput = z.object({
   telefono: nullableStr(30),
   rol: z.enum(ROLES).default('CLIENTE'),
   activo: z.boolean().default(true),
+  /** Sólo rol OPTICA: óptica a la que pertenece el usuario. */
+  opticaId: z.string().min(1).nullable().optional(),
   password: passwordSchema,
 });
 export const usuarioUpdate = partialSinDefaults(usuarioInput.omit({ password: true }).shape);

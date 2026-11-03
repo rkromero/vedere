@@ -1,5 +1,6 @@
 // Seed: usuario ADMIN (desde env) + catálogo base (categorías, marcas, colecciones y 12 productos de ejemplo)
-// + datos de tienda (promos, ópticas socias de ejemplo y cupones).
+// + datos de tienda (promos, ópticas socias de ejemplo y cupones) + un usuario OPTICA por óptica socia
+// (prompt 5) si está definido OPTICA_PASSWORD.
 // Idempotente: usa upsert por slug / sku / email. Nunca hardcodear credenciales acá.
 import { PrismaClient, Rol } from '@prisma/client';
 import type { EstadoProducto, Forma, Genero, Linea, Material, TipoImagen } from '@prisma/client';
@@ -663,10 +664,10 @@ const PROMOS = [
 
 // Ópticas de ejemplo (nombres ficticios) con coordenadas aproximadas para el mapa.
 const OPTICAS = [
-  { nombre: 'Óptica Mirada Palermo', direccion: 'Av. Santa Fe 4120', localidad: 'Palermo, CABA', provincia: 'Buenos Aires', codigoPostal: '1425', lat: -34.5846, lng: -58.4216, whatsapp: '5491150000001', horarios: 'Lun a vie 10 a 19 · Sáb 10 a 14' },
-  { nombre: 'Óptica Mirada Recoleta', direccion: 'Av. Callao 1580', localidad: 'Recoleta, CABA', provincia: 'Buenos Aires', codigoPostal: '1024', lat: -34.5913, lng: -58.3921, whatsapp: '5491150000002', horarios: 'Lun a vie 9 a 19' },
-  { nombre: 'Visión Belgrano', direccion: 'Av. Cabildo 2240', localidad: 'Belgrano, CABA', provincia: 'Buenos Aires', codigoPostal: '1428', lat: -34.5615, lng: -58.4567, whatsapp: '5491150000003', horarios: 'Lun a sáb 10 a 20' },
-  { nombre: 'Óptica Caballito Centro', direccion: 'Av. Rivadavia 5020', localidad: 'Caballito, CABA', provincia: 'Buenos Aires', codigoPostal: '1424', lat: -34.6183, lng: -58.4342, whatsapp: '5491150000004', horarios: 'Lun a vie 9.30 a 19' },
+  { nombre: 'Óptica Mirada Palermo', razonSocial: 'Mirada Palermo S.R.L.', cuit: '30-71234567-8', opticoResponsable: 'Lic. Carolina Suárez', matricula: 'MN 4521', radioKm: 8, comisionPct: 12, capacidadDiaria: 15, direccion: 'Av. Santa Fe 4120', localidad: 'Palermo, CABA', provincia: 'Buenos Aires', codigoPostal: '1425', lat: -34.5846, lng: -58.4216, whatsapp: '5491150000001', horarios: 'Lun a vie 10 a 19 · Sáb 10 a 14' },
+  { nombre: 'Óptica Mirada Recoleta', razonSocial: 'Mirada Recoleta S.A.', cuit: '30-71234568-6', opticoResponsable: 'Lic. Martín Peralta', matricula: 'MN 3890', radioKm: 6, comisionPct: 12, capacidadDiaria: 12, direccion: 'Av. Callao 1580', localidad: 'Recoleta, CABA', provincia: 'Buenos Aires', codigoPostal: '1024', lat: -34.5913, lng: -58.3921, whatsapp: '5491150000002', horarios: 'Lun a vie 9 a 19' },
+  { nombre: 'Visión Belgrano', razonSocial: 'Visión Belgrano S.R.L.', cuit: '30-71234569-4', opticoResponsable: 'Lic. Paula Grimaldi', matricula: 'MN 5102', radioKm: 5, comisionPct: 10, capacidadDiaria: 10, direccion: 'Av. Cabildo 2240', localidad: 'Belgrano, CABA', provincia: 'Buenos Aires', codigoPostal: '1428', lat: -34.5615, lng: -58.4567, whatsapp: '5491150000003', horarios: 'Lun a sáb 10 a 20' },
+  { nombre: 'Óptica Caballito Centro', razonSocial: 'Caballito Centro S.R.L.', cuit: '30-71234570-8', opticoResponsable: 'Lic. Diego Ferreyra', matricula: 'MN 2977', radioKm: 6, comisionPct: 10, capacidadDiaria: 20, direccion: 'Av. Rivadavia 5020', localidad: 'Caballito, CABA', provincia: 'Buenos Aires', codigoPostal: '1424', lat: -34.6183, lng: -58.4342, whatsapp: '5491150000004', horarios: 'Lun a vie 9.30 a 19' },
   { nombre: 'Óptica San Isidro Norte', direccion: 'Av. Centenario 980', localidad: 'San Isidro', provincia: 'Buenos Aires', codigoPostal: '1642', lat: -34.4712, lng: -58.5277, whatsapp: '5491150000005', horarios: 'Lun a vie 9 a 18 · Sáb 9 a 13' },
   { nombre: 'Lomas Visión', direccion: 'Laprida 340', localidad: 'Lomas de Zamora', provincia: 'Buenos Aires', codigoPostal: '1832', lat: -34.7608, lng: -58.4008, whatsapp: '5491150000006', horarios: 'Lun a sáb 9 a 19' },
   { nombre: 'Óptica Oeste Morón', direccion: 'Brown 760', localidad: 'Morón', provincia: 'Buenos Aires', codigoPostal: '1708', lat: -34.6503, lng: -58.6195, whatsapp: '5491150000007', horarios: 'Lun a vie 9 a 18' },
@@ -701,13 +702,30 @@ async function seedTienda(adminId: string) {
     });
   }
 
+  // Un usuario OPTICA por óptica (prompt 5) sólo si hay OPTICA_PASSWORD en el entorno: email optica-<slug>@vedere.com.ar.
+  const opticaPassword = process.env.OPTICA_PASSWORD;
+  if (opticaPassword && opticaPassword.length < 10) throw new Error('OPTICA_PASSWORD debe tener al menos 10 caracteres.');
+  const opticaHash = opticaPassword ? await argon2.hash(opticaPassword, { type: argon2.argon2id }) : null;
+  let usuariosOptica = 0;
+
   for (const o of OPTICAS) {
     const slug = slugify(o.nombre);
-    await prisma.optica.upsert({
+    // Defaults del prompt 5 para las ópticas sin datos propios: radio 10 km, 10 % de comisión, 20 pedidos por día.
+    const datos = { radioKm: 10, comisionPct: 10, capacidadDiaria: 20, email: `${slug}@vedere.com.ar`, ...o };
+    const optica = await prisma.optica.upsert({
       where: { slug },
-      update: { ...o, activa: true, updatedById: adminId },
-      create: { ...o, slug, activa: true, ...audit },
+      update: { ...datos, activa: true, updatedById: adminId },
+      create: { ...datos, slug, activa: true, ...audit },
     });
+    if (opticaHash) {
+      const email = `optica-${slug}@vedere.com.ar`;
+      await prisma.user.upsert({
+        where: { email },
+        update: { rol: Rol.OPTICA, opticaId: optica.id, activo: true, passwordHash: opticaHash },
+        create: { email, nombre: o.nombre, rol: Rol.OPTICA, opticaId: optica.id, activo: true, passwordHash: opticaHash },
+      });
+      usuariosOptica++;
+    }
   }
 
   for (const c of CUPONES) {
@@ -718,7 +736,8 @@ async function seedTienda(adminId: string) {
     });
   }
   console.log(
-    '[seed] Tienda: ' + PROMOS.length + ' promos, ' + OPTICAS.length + ' ópticas socias, ' + CUPONES.length + ' cupones',
+    '[seed] Tienda: ' + PROMOS.length + ' promos, ' + OPTICAS.length + ' ópticas socias, ' + CUPONES.length + ' cupones' +
+      (usuariosOptica ? ', ' + usuariosOptica + ' usuarios OPTICA (optica-<slug>@vedere.com.ar)' : ' (sin usuarios OPTICA: definí OPTICA_PASSWORD)'),
   );
 }
 
@@ -741,6 +760,11 @@ async function seedCheckout(adminId: string) {
       cuotasGeneral: 6,
       cuotasPorLinea: { MULTIFOCAL: 12 },
       costoEnvio: 0,
+      // Prompt 5: plazo de aceptación de la óptica en horas hábiles y horario hábil (hora Argentina).
+      plazoAceptacionHoras: 4,
+      horaHabilDesde: 9,
+      horaHabilHasta: 18,
+      sabadoHabil: true,
       updatedById: adminId,
     },
   });

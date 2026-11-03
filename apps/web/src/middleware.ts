@@ -1,4 +1,4 @@
-// Middleware de /admin: si el access token venció (o está por vencer) y hay refresh token,
+// Middleware de /admin y /optica: si el access token venció (o está por vencer) y hay refresh token,
 // renueva la sesión contra la API y propaga las cookies nuevas a la respuesta y al request.
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -20,7 +20,7 @@ function jwtExp(token: string): number | null {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith('/admin/login')) return NextResponse.next();
+  if (pathname.startsWith('/admin/login') || pathname.startsWith('/optica/login')) return NextResponse.next();
 
   const access = request.cookies.get(ACCESS)?.value;
   const refresh = request.cookies.get(REFRESH)?.value;
@@ -67,5 +67,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/optica/:path*'],
 };

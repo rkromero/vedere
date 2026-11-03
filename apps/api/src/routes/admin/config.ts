@@ -22,6 +22,10 @@ export function serializeConfig(c: ConfigTienda) {
     cuotasGeneral: c.cuotasGeneral,
     cuotasPorLinea: (c.cuotasPorLinea ?? {}) as Record<string, number>,
     costoEnvio: dec(c.costoEnvio) ?? 0,
+    plazoAceptacionHoras: c.plazoAceptacionHoras,
+    horaHabilDesde: c.horaHabilDesde,
+    horaHabilHasta: c.horaHabilHasta,
+    sabadoHabil: c.sabadoHabil,
     updatedAt: c.updatedAt,
   };
 }
@@ -38,6 +42,8 @@ const configRoutes: FastifyPluginAsync = async (app) => {
         mpEnabled: app.env.MP_ENABLED,
         places: !!app.env.GOOGLE_MAPS_API_KEY,
         reservaMinutos: app.env.RESERVA_STOCK_MINUTOS,
+        emails: !!app.env.RESEND_API_KEY,
+        adminNotifyEmail: app.env.ADMIN_NOTIFY_EMAIL ?? null,
       },
     };
   });
