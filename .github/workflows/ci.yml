@@ -46,7 +46,7 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prod=false
 
       - name: Prisma generate + build db
         run: pnpm --filter @vedere/db build
@@ -107,7 +107,7 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prod=false
 
       - name: Base de datos (migraciones + seed)
         run: |
