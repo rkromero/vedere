@@ -54,8 +54,9 @@ describe.skipIf(!hasDb)('reportes (integración)', () => {
     expect(r.hoy).toEqual({ ventas: 297900, pedidos: 2 });
     expect(r.semana.pedidos).toBe(2);
     expect(r.mes.pedidos).toBeGreaterThanOrEqual(2);
-    expect(r.porDia).toHaveLength(1);
-    expect(r.porDia[0]).toMatchObject({ fecha: fechaAR(new Date()), ventas: 297900, pedidos: 2 });
+    expect(r.porDia).toHaveLength(30); // serie completa del período, días sin ventas en 0
+    expect(r.porDia.filter((d: { pedidos: number }) => d.pedidos > 0)).toHaveLength(1);
+    expect(r.porDia.at(-1)).toMatchObject({ fecha: fechaAR(new Date()), ventas: 297900, pedidos: 2 });
 
     const estados = Object.fromEntries(r.porEstado.map((e: { estado: string; cantidad: number }) => [e.estado, e.cantidad]));
     expect(estados.PENDIENTE_PAGO).toBe(1);
@@ -79,7 +80,7 @@ describe.skipIf(!hasDb)('reportes (integración)', () => {
     const hasta = fechaAR(new Date());
     const res = await ctx.inject('GET', `/admin/reportes?desde=${desde}&hasta=${hasta}`, ctx.staffCookie);
     expect(res.json().totales.pedidos).toBe(3);
-    expect(res.json().porDia).toHaveLength(2);
+    expect(res.json().porDia.filter((d: { pedidos: number }) => d.pedidos > 0)).toHaveLength(2);
     const soloViejo = await ctx.inject('GET', `/admin/reportes?desde=${desde}&hasta=${fechaAR(new Date(Date.now() - 35 * 86400_000))}`, ctx.staffCookie);
     expect(soloViejo.json().totales).toMatchObject({ pedidos: 1, ventas: 90000, ticketPromedio: 90000 });
     expect((await ctx.inject('GET', '/admin/reportes?desde=2026-02-01&hasta=2026-01-01', ctx.staffCookie)).statusCode).toBe(400);

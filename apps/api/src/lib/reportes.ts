@@ -56,6 +56,16 @@ async function totalesEntre(desdeTs: Date, hastaTs: Date): Promise<Totales> {
   return { ventas: r?.ventas ?? 0, pedidos: r?.pedidos ?? 0 };
 }
 
+/** Serie diaria completa del período (los días sin ventas van en 0) para que el gráfico muestre el rango entero. */
+function rellenarDias(periodo: Periodo, filas: Array<{ fecha: string; ventas: number; pedidos: number }>) {
+  const porFecha = new Map(filas.map((f) => [f.fecha, f]));
+  const out: Array<{ fecha: string; ventas: number; pedidos: number }> = [];
+  for (let d = periodo.desde; d <= periodo.hasta && out.length < 400; d = sumarDias(d, 1)) {
+    out.push(porFecha.get(d) ?? { fecha: d, ventas: 0, pedidos: 0 });
+  }
+  return out;
+}
+
 export async function generarReporte(periodo: Periodo, ahora = new Date()) {
   const { desdeTs, hastaTs } = limitesPeriodo(periodo);
   const hoy = fechaAR(ahora);
@@ -141,7 +151,7 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
     hoy: hoyT,
     semana: semanaT,
     mes: mesT,
-    porDia,
+    porDia: rellenarDias(periodo, porDia),
     porEstado,
     porLinea,
     porOptica: porOptica.map((f) => ({ ...f, clave: f.clave ?? 'sin-asignar' })),
