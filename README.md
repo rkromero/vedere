@@ -167,7 +167,9 @@ pnpm test
 
 ## Deploy en Railway
 
-Proyecto **vedere** con tres servicios: `Postgres`, `api` y `web`. `api` y `web` están vinculados al repo de GitHub (`rkromero/vedere`) y despliegan automáticamente con cada push a `main`. Cada uno se construye con su Dockerfile desde la raíz del monorepo (`apps/api/Dockerfile`, `apps/web/Dockerfile`), configurado en el servicio de Railway (Dockerfile path, healthcheck `/health`, restart on failure). Railway deprecó `railway.json`; la configuración vive en el servicio.
+Proyecto **vedere** con cuatro servicios: `Postgres`, `storage`, `api` y `web`. `api` y `web` están vinculados al repo de GitHub (`rkromero/vedere`) y despliegan automáticamente con cada push a `main`. Cada uno se construye con su Dockerfile desde la raíz del monorepo (`apps/api/Dockerfile`, `apps/web/Dockerfile`), configurado en el servicio de Railway (Dockerfile path, healthcheck `/health`, restart on failure). Railway deprecó `railway.json`; la configuración vive en el servicio.
+
+`storage` es un object store S3-compatible ([RustFS](https://github.com/rustfs/rustfs), imagen `rustfs/rustfs:1.0.4`) con un volumen persistente en `/data` y dominio público; el bucket `vedere-media` tiene política de lectura anónima. La API le habla con el mismo driver S3 que usa para Cloudflare R2 (`STORAGE_DRIVER=auto` + variables `R2_*` apuntando a él vía `R2_ENDPOINT`), así que las imágenes de producción persisten entre deploys. Para pasar a Cloudflare R2 cuando haya cuenta: crear el bucket, reemplazar `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` y `R2_PUBLIC_URL` en el servicio `api`, vaciar `R2_ENDPOINT` y redeployar; no hay cambios de código.
 
 La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica las migraciones pendientes.
 
@@ -175,20 +177,20 @@ La API corre `prisma migrate deploy` al arrancar, así que cada deploy aplica la
 
 **api**
 
-| Variable                                                                                  | Valor                                                                                                       |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                                                            | `${{Postgres.DATABASE_URL}}`                                                                                |
-| `NODE_ENV`                                                                                | `production`                                                                                                |
-| `WEB_URL`                                                                                 | URL pública de la web (CORS)                                                                                |
-| `API_PUBLIC_URL`                                                                          | URL pública de la API (URLs de imágenes en modo local)                                                      |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                                                 | `openssl rand -base64 48` (distintos)                                                                       |
-| `COOKIE_SECURE`                                                                           | `true`                                                                                                      |
-| `COOKIE_SAME_SITE`                                                                        | `lax` (las cookies viajan por el proxy `/api/*` de la web)                                                  |
-| `STORAGE_DRIVER`, `UPLOADS_DIR`, `MAX_UPLOAD_MB`                                          | `auto` / `./uploads` / `10`. Con `auto` usa R2 si hay credenciales; si no, disco local (efímero en Railway) |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | credenciales del bucket (pendiente). Al cargarlas, `STORAGE_DRIVER=auto` pasa solo a R2                     |
-| `R2_ENDPOINT`                                                                             | opcional: endpoint S3 alternativo (MinIO local). Vacío = R2 de la cuenta                                    |
-| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`, `RATE_LIMIT_MAX`, `RATE_LIMIT_AUTH_MAX`     | opcionales (ver `.env.example`)                                                                             |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE`                                           | para el seed                                                                                                |
+| Variable                                                                                  | Valor                                                                                                                         |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                                            | `${{Postgres.DATABASE_URL}}`                                                                                                  |
+| `NODE_ENV`                                                                                | `production`                                                                                                                  |
+| `WEB_URL`                                                                                 | URL pública de la web (CORS)                                                                                                  |
+| `API_PUBLIC_URL`                                                                          | URL pública de la API (URLs de imágenes en modo local)                                                                        |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                                                 | `openssl rand -base64 48` (distintos)                                                                                         |
+| `COOKIE_SECURE`                                                                           | `true`                                                                                                                        |
+| `COOKIE_SAME_SITE`                                                                        | `lax` (las cookies viajan por el proxy `/api/*` de la web)                                                                    |
+| `STORAGE_DRIVER`, `UPLOADS_DIR`, `MAX_UPLOAD_MB`                                          | `auto` / `./uploads` / `10`. Con `auto` usa R2 si hay credenciales; si no, disco local (efímero en Railway)                   |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | credenciales del bucket. Hoy apuntan al servicio `storage` (ver arriba); con Cloudflare R2 se reemplazan por las de la cuenta |
+| `R2_ENDPOINT`                                                                             | endpoint S3 alternativo (hoy la URL pública del servicio `storage`; local: RustFS de docker-compose). Vacío = R2 de la cuenta |
+| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`, `RATE_LIMIT_MAX`, `RATE_LIMIT_AUTH_MAX`     | opcionales (ver `.env.example`)                                                                                               |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NOMBRE`                                           | para el seed                                                                                                                  |
 
 **web**
 

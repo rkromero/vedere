@@ -1,4 +1,5 @@
-# Postgres local para desarrollo. Uso: docker compose up -d
+# Postgres + object store S3-compatible (RustFS) para desarrollo. Uso: docker compose up -d
+# Con STORAGE_DRIVER=local no hace falta el storage; para probar el driver S3 configurá R2_* según .env.example.
 services:
   postgres:
     image: postgres:16-alpine
@@ -18,5 +19,21 @@ services:
       timeout: 5s
       retries: 10
 
+  storage:
+    image: rustfs/rustfs:1.0.4
+    container_name: vedere-storage
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: vedere
+      RUSTFS_SECRET_KEY: vedere-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: 'false'
+    ports:
+      - '9000:9000'
+    volumes:
+      - vedere_storage:/data
+
 volumes:
   vedere_pgdata:
+  vedere_storage:
