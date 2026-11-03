@@ -144,3 +144,9 @@
   height: 44px;
   line-height: 44px;
 }
+
+/* Red de seguridad fuera de capas: un <dialog> cerrado nunca se muestra, aunque una utilidad
+   de display (flex, grid) esté en su className. */
+dialog:not([open]) {
+  display: none;
+}

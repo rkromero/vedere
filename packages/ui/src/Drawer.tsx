@@ -87,7 +87,7 @@ export function Drawer({
         if (e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        'fixed m-0 flex max-w-none flex-col bg-blanco p-0 text-negro shadow-2xl backdrop:bg-negro/50',
+        'fixed m-0 hidden max-w-none flex-col bg-blanco p-0 text-negro shadow-2xl open:flex backdrop:bg-negro/50',
         'open:animate-[drawer-in_.22s_ease-out]',
         sides[side],
         className,
