@@ -25,10 +25,10 @@ export function OpticasMapa({
       if (cancelado || !ref.current || mapRef.current) return;
       const map = L.map(ref.current, { scrollWheelZoom: false, zoomControl: true });
       mapRef.current = map;
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      // Teselas de OpenStreetMap (las de CARTO pasaron a exigir API key).
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
       const conCoords = opticas.filter((o) => o.lat !== null && o.lng !== null);
       const icon = L.divIcon({

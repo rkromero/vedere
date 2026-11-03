@@ -69,8 +69,10 @@ export function PedidoDetalle({ inicial, esAdmin }: { inicial: PedidoAdmin; esAd
     setAccion(a);
   };
 
-  const pagoPendienteTransferencia = pedido.metodoPago === 'TRANSFERENCIA' && pedido.estadoPago !== 'APROBADO' && pedido.estado !== 'CANCELADO';
   const cerrado = pedido.estado === 'CANCELADO' || pedido.estado === 'DEVUELTO';
+  // Solo se confirma/rechaza una transferencia que sigue pendiente (o rechazada y el cliente la hizo después); nunca sobre un pedido cerrado o reembolsado.
+  const pagoPendienteTransferencia =
+    pedido.metodoPago === 'TRANSFERENCIA' && (pedido.estadoPago === 'PENDIENTE' || pedido.estadoPago === 'RECHAZADO') && !cerrado;
   const entregado = pedido.estado === 'ENTREGADO' || pedido.estado === 'DEVUELTO';
   const reembolsable = pedido.estadoPago === 'APROBADO' && (pedido.reembolsado ?? 0) < pedido.totales.total;
   const vencido = pedido.estado === 'ASIGNADO' && pedido.aceptarAntesDe && new Date(pedido.aceptarAntesDe).getTime() < Date.now();

@@ -289,6 +289,7 @@ const pedidosRoutes: FastifyPluginAsync = async (app) => {
     const existing = await prisma.pedido.findUnique({ where: { id: request.params.id } });
     if (!existing) throw Errors.notFound('Pedido no encontrado');
     if (existing.estado === 'CANCELADO') throw Errors.badRequest('El pedido está cancelado');
+    if (existing.estado === 'DEVUELTO' || existing.estadoPago === 'REEMBOLSADO') throw Errors.badRequest('El pedido fue devuelto y reembolsado');
     const r = await aprobarPago(
       existing.id,
       {
