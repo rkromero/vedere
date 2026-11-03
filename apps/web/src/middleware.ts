@@ -67,5 +67,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/optica/:path*'],
+  matcher: ['/admin/:path*', '/optica/:path*', '/mi-cuenta/:path*'],
 };

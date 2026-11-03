@@ -4,6 +4,7 @@ import { prisma } from '@vedere/db';
 import type { EstadoPedido, Optica, Prisma, Rol } from '@vedere/db';
 import type { Env } from '../env.js';
 import { emailAdmin, emailEstadoCliente, emailOpticaNuevoPedido } from './email.js';
+import { ejecutarPostPago } from './post-pago.js';
 import type { PedidoParaEmail } from './email.js';
 import { AppError, Errors } from './errors.js';
 import { distanciaKm } from './geo.js';
@@ -509,6 +510,8 @@ export async function procesarVencidos(env: Env, ahora = new Date()): Promise<nu
 /** Se llama una sola vez cuando el pago queda aprobado: email de pago y asignación automática. */
 export async function onPagoAprobado(pedido: PedidoFull, env: Env, actor: Actor = SISTEMA): Promise<PedidoFull> {
   await emailEstadoCliente(env, pedidoParaEmail(pedido), 'PAGADO');
+  // Prompt 6: referidos y conversiones server-side (nunca frenan el pedido).
+  await ejecutarPostPago(pedido, env);
   if (pedido.estado !== 'PAGADO') return pedido;
   try {
     const r = await asignarAutomatico(pedido.id, { env, actor });
