@@ -24,6 +24,7 @@ export function MayoristaConfigForm({ inicial, editable }: { inicial: ConfigMayo
     retiroHabilitado: inicial.retiroHabilitado,
     retiroDireccion: inicial.retiroDireccion ?? '',
     retiroHorario: inicial.retiroHorario ?? '',
+    diasToleranciaVencida: String(inicial.diasToleranciaVencida ?? 7),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -44,6 +45,7 @@ export function MayoristaConfigForm({ inicial, editable }: { inicial: ConfigMayo
         retiroHabilitado: form.retiroHabilitado,
         retiroDireccion: form.retiroDireccion.trim() || null,
         retiroHorario: form.retiroHorario.trim() || null,
+        diasToleranciaVencida: Number(form.diasToleranciaVencida) || 0,
       });
       toast.ok('Configuración mayorista guardada');
       router.refresh();
@@ -110,6 +112,23 @@ export function MayoristaConfigForm({ inicial, editable }: { inicial: ConfigMayo
         </div>
       </div>
       {errors.retiroHabilitado && <p className="text-sm text-carey">{errors.retiroHabilitado}</p>}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field
+          label="Tolerancia de deuda vencida (días)"
+          error={errors.diasToleranciaVencida}
+          hint="Con deuda vencida hace más días que esto, los pedidos nuevos quedan en revisión."
+        >
+          <Input
+            type="number"
+            min={0}
+            max={90}
+            value={form.diasToleranciaVencida}
+            onChange={(e) => set('diasToleranciaVencida', e.target.value)}
+            disabled={d}
+            data-testid="config-tolerancia"
+          />
+        </Field>
+      </div>
 
       {editable ? (
         <Btn type="submit" size="sm" loading={saving}>

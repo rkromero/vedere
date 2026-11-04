@@ -1,7 +1,7 @@
 // B2B 2: canal mayorista. Precio por óptica (precioMayorista × (1 − descuentoPct)), compra mínima,
 // carrito del portal (separado del de la tienda), pedidos VM-10001 y su ciclo:
-// PENDIENTE_APROBACION → APROBADO (reserva stock con ReservaStock, igual que la tienda) → DESPACHADO
-// (descuenta el stock y consume la reserva) → ENTREGADO. CANCELADO libera la reserva.
+// PENDIENTE_APROBACION → APROBADO / EN_REVISION (B2B 3: regla de crédito) → ... Las transiciones viven en
+// lib/gestion-mayorista.ts y la cuenta corriente en lib/cuenta-corriente.ts.
 import { prisma } from '@vedere/db';
 import type { ConfigMayorista, Optica, Prisma, TipoMinimoMayorista } from '@vedere/db';
 import { EN_MAYORISTA } from './canales.js';
@@ -38,6 +38,7 @@ export function serializeConfigMayorista(c: ConfigMayorista) {
     retiroHabilitado: c.retiroHabilitado,
     retiroDireccion: c.retiroDireccion,
     retiroHorario: c.retiroHorario,
+    diasToleranciaVencida: c.diasToleranciaVencida,
     updatedAt: c.updatedAt,
   };
 }
@@ -434,11 +435,52 @@ export function opcionesEntrega(optica: Pick<Optica, 'direccion' | 'localidad' |
 export const pedidoMayoristaInclude = {
   items: { orderBy: { nombre: 'asc' } },
   optica: { select: { id: true, nombre: true, slug: true, cuit: true, razonSocial: true, email: true, telefono: true } },
+  imputaciones: { select: { monto: true } },
+} satisfies Prisma.PedidoMayoristaInclude;
+
+/** Para la ficha del pedido: además, línea de tiempo y devoluciones. */
+export const pedidoMayoristaDetalleInclude = {
+  ...pedidoMayoristaInclude,
+  eventos: { orderBy: { createdAt: 'asc' } },
+  devoluciones: { orderBy: { createdAt: 'desc' }, include: { items: { include: { pedidoItem: { select: { nombre: true, sku: true, color: true } } } } } },
 } satisfies Prisma.PedidoMayoristaInclude;
 
 export type PedidoMayoristaFull = Prisma.PedidoMayoristaGetPayload<{ include: typeof pedidoMayoristaInclude }>;
+type PedidoMayoristaDetalle = Prisma.PedidoMayoristaGetPayload<{ include: typeof pedidoMayoristaDetalleInclude }>;
 
-export function serializePedidoMayorista(p: PedidoMayoristaFull, opts: { interno?: boolean } = {}) {
+const DEBITADOS = new Set(['LISTO_PARA_RETIRO', 'DESPACHADO', 'ENTREGADO']);
+
+export function serializeDevolucionMayorista(d: PedidoMayoristaDetalle['devoluciones'][number]) {
+  return {
+    id: d.id,
+    pedidoId: d.pedidoId,
+    estado: d.estado,
+    motivo: d.motivo,
+    fotos: d.fotos,
+    usuarioNombre: d.usuarioNombre,
+    importe: dec(d.importe)!,
+    motivoRechazo: d.motivoRechazo,
+    resueltoEn: d.resueltoEn,
+    createdAt: d.createdAt,
+    items: d.items.map((i) => ({
+      id: i.id,
+      pedidoItemId: i.pedidoItemId,
+      nombre: i.pedidoItem.nombre,
+      sku: i.pedidoItem.sku,
+      color: i.pedidoItem.color,
+      cantidad: i.cantidad,
+      total: dec(i.total)!,
+    })),
+  };
+}
+
+export function serializePedidoMayorista(p: PedidoMayoristaFull | PedidoMayoristaDetalle, opts: { interno?: boolean } = {}) {
+  const total = dec(p.total)!;
+  const pagado = round2(p.imputaciones.reduce((a, i) => a + dec(i.monto)!, 0));
+  const debitado = DEBITADOS.has(p.estado) && !!p.venceEn;
+  const pendiente = debitado ? round2(total - pagado) : 0;
+  const estadoPago = !debitado ? 'NO_APLICA' : pagado <= 0.004 ? 'IMPAGO' : pendiente > 0.004 ? 'PARCIAL' : 'PAGADO';
+  const detalle = 'eventos' in p ? (p as PedidoMayoristaDetalle) : null;
   return {
     id: p.id,
     numero: p.numero,
@@ -463,11 +505,32 @@ export function serializePedidoMayorista(p: PedidoMayoristaFull, opts: { interno
     motivoCancelacion: p.motivoCancelacion,
     repetidoDeId: p.repetidoDeId,
     numeroSeguimiento: p.numeroSeguimiento,
+    transporte: p.transporte,
+    linkSeguimiento: p.linkSeguimiento,
+    numeroRemito: p.numeroRemito,
+    numeroFactura: p.numeroFactura,
+    motivoRevision: p.motivoRevision,
+    plazoPagoDias: p.plazoPagoDias,
+    venceEn: p.venceEn,
+    pagado,
+    pendiente,
+    estadoPago,
+    vencido: debitado && pendiente > 0.004 && !!p.venceEn && p.venceEn < new Date(),
     aprobadoEn: p.aprobadoEn,
+    enPreparacionEn: p.enPreparacionEn,
+    listoParaRetiroEn: p.listoParaRetiroEn,
     despachadoEn: p.despachadoEn,
     entregadoEn: p.entregadoEn,
     canceladoEn: p.canceladoEn,
     createdAt: p.createdAt,
+    ...(detalle
+      ? {
+          eventos: detalle.eventos
+            .filter((e) => opts.interno || !e.interno)
+            .map((e) => ({ id: e.id, tipo: e.tipo, estado: e.estado, nota: e.nota, interno: e.interno, usuarioNombre: e.usuarioNombre, createdAt: e.createdAt })),
+          devoluciones: detalle.devoluciones.map(serializeDevolucionMayorista),
+        }
+      : {}),
     items: p.items.map((i) => ({
       id: i.id,
       varianteId: i.varianteId,
@@ -529,9 +592,12 @@ export async function confirmarPedidoMayorista(
 
   return prisma.$transaction(async (tx) => {
     const numero = await siguienteNumeroMayorista(tx);
+    // B2B 3: el pedido vence según el plazo vigente al momento de la compra.
+    const cuenta = await tx.cuentaCorriente.upsert({ where: { opticaId: optica.id }, create: { opticaId: optica.id }, update: {} });
     const p = await tx.pedidoMayorista.create({
       data: {
         numero,
+        plazoPagoDias: cuenta.plazoPagoDias,
         opticaId: optica.id,
         usuarioId: usuario.id,
         usuarioNombre: usuario.nombre,
@@ -573,6 +639,9 @@ export async function confirmarPedidoMayorista(
       include: pedidoMayoristaInclude,
     });
     await tx.carritoMayorista.update({ where: { userId: usuario.id }, data: { items: [] } });
+    await tx.eventoPedidoMayorista.create({
+      data: { pedidoId: p.id, tipo: 'ESTADO', estado: 'PENDIENTE_APROBACION', nota: 'Pedido recibido', usuarioId: usuario.id, usuarioNombre: usuario.nombre },
+    });
     return p;
   });
 }
@@ -592,94 +661,4 @@ export async function repetirPedidoMayorista(userId: string, pedido: { items: Ar
   return { items, ajustes };
 }
 
-// ------------------------------------------------------------------
-// Transiciones (admin)
-// ------------------------------------------------------------------
-
-async function cargar(id: string, db: Db) {
-  const p = await db.pedidoMayorista.findUnique({ where: { id }, include: pedidoMayoristaInclude });
-  if (!p) throw Errors.notFound('Pedido mayorista no encontrado');
-  return p;
-}
-
-/** Aprueba y reserva el stock (misma tabla ReservaStock que la tienda: el stock es uno solo). */
-export async function aprobarPedidoMayorista(id: string, actorId: string) {
-  return prisma.$transaction(
-    async (tx) => {
-      const p = await cargar(id, tx);
-      if (p.estado !== 'PENDIENTE_APROBACION') throw Errors.conflict('Sólo se aprueban pedidos pendientes de aprobación');
-      const cantidades = new Map<string, number>();
-      for (const i of p.items) if (i.varianteId) cantidades.set(i.varianteId, (cantidades.get(i.varianteId) ?? 0) + i.cantidad);
-      // Bloquea las variantes para que dos aprobaciones (o un pago web) no reserven el mismo stock.
-      const ids = [...cantidades.keys()];
-      if (ids.length) {
-        await tx.$queryRawUnsafe(`SELECT id FROM variantes WHERE id = ANY($1::text[]) FOR UPDATE`, ids);
-      }
-      const variantes = await tx.variante.findMany({ where: { id: { in: ids } }, select: { id: true, stock: true, sku: true } });
-      const disp = await disponibilidad(variantes, tx);
-      const faltantes = variantes
-        .filter((v) => (disp.get(v.id) ?? 0) < (cantidades.get(v.id) ?? 0))
-        .map((v) => ({ sku: v.sku, pedida: cantidades.get(v.id) ?? 0, disponible: disp.get(v.id) ?? 0 }));
-      if (faltantes.length) {
-        throw new AppError(
-          409,
-          'STOCK_INSUFICIENTE',
-          `No hay stock para reservar: ${faltantes.map((f) => `${f.sku} (pide ${f.pedida}, hay ${f.disponible})`).join(', ')}`,
-          { faltantes },
-        );
-      }
-      const expiraEn = new Date(Date.now() + DIAS_RESERVA_MAYORISTA * 24 * 3600 * 1000);
-      await tx.reservaStock.createMany({
-        data: [...cantidades].map(([varianteId, cantidad]) => ({ pedidoMayoristaId: p.id, varianteId, cantidad, expiraEn })),
-      });
-      await tx.pedidoMayorista.update({
-        where: { id: p.id },
-        data: { estado: 'APROBADO', aprobadoEn: new Date(), aprobadoPorId: actorId },
-      });
-      return cargar(p.id, tx);
-    },
-    { timeout: 20000 },
-  );
-}
-
-export async function cancelarPedidoMayorista(id: string, motivo: string) {
-  return prisma.$transaction(async (tx) => {
-    const p = await cargar(id, tx);
-    if (p.estado !== 'PENDIENTE_APROBACION' && p.estado !== 'APROBADO') {
-      throw Errors.conflict('Sólo se cancelan pedidos pendientes o aprobados (sin despachar)');
-    }
-    await tx.reservaStock.updateMany({ where: { pedidoMayoristaId: p.id, estado: 'ACTIVA' }, data: { estado: 'LIBERADA' } });
-    await tx.pedidoMayorista.update({
-      where: { id: p.id },
-      data: { estado: 'CANCELADO', canceladoEn: new Date(), motivoCancelacion: motivo },
-    });
-    return cargar(p.id, tx);
-  });
-}
-
-/** Despacha: descuenta el stock físico una sola vez y consume la reserva. */
-export async function despacharPedidoMayorista(id: string, numeroSeguimiento: string | null) {
-  return prisma.$transaction(async (tx) => {
-    const p = await cargar(id, tx);
-    if (p.estado !== 'APROBADO') throw Errors.conflict('Sólo se despachan pedidos aprobados');
-    if (!p.stockDescontado) {
-      for (const i of p.items) {
-        if (!i.varianteId) continue;
-        await tx.variante.update({ where: { id: i.varianteId }, data: { stock: { decrement: i.cantidad } } });
-      }
-      await tx.reservaStock.updateMany({ where: { pedidoMayoristaId: p.id, estado: 'ACTIVA' }, data: { estado: 'CONSUMIDA' } });
-    }
-    await tx.pedidoMayorista.update({
-      where: { id: p.id },
-      data: { estado: 'DESPACHADO', despachadoEn: new Date(), stockDescontado: true, numeroSeguimiento },
-    });
-    return cargar(p.id, tx);
-  });
-}
-
-export async function entregarPedidoMayorista(id: string) {
-  const p = await cargar(id, prisma);
-  if (p.estado !== 'DESPACHADO') throw Errors.conflict('Sólo se marcan como entregados los pedidos despachados');
-  await prisma.pedidoMayorista.update({ where: { id }, data: { estado: 'ENTREGADO', entregadoEn: new Date() } });
-  return cargar(id, prisma);
-}
+export { DIAS_RESERVA_MAYORISTA };

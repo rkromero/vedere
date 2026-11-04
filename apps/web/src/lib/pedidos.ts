@@ -422,6 +422,15 @@ export interface LiquidacionGeneral {
     comision: number;
   }>;
   totales: { cantidad: number; monto: number; comision: number };
+  /** B2B 3: cierre del mes (acreditó la comisión en la cuenta corriente de cada óptica). */
+  cierre?: LiquidacionCierre | null;
+}
+
+export interface LiquidacionCierre {
+  mes: string;
+  cerradoEn: string;
+  total: number;
+  cantidadOpticas: number;
 }
 
 export interface OpticaMe {

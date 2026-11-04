@@ -205,6 +205,9 @@ export interface OpticaAdmin {
   descuentoPct?: number;
   minimoTipo?: 'NINGUNO' | 'UNIDADES' | 'MONTO' | null;
   minimoValor?: number | null;
+  // B2B 3: cuenta corriente (en B2B 4 lo define el nivel).
+  limiteCredito?: number;
+  plazoPagoDias?: number;
   /** Pedidos asignados hoy (lo calcula la API en el listado). */
   asignadosHoy?: number;
   usuarios?: number;

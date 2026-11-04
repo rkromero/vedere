@@ -5,7 +5,7 @@ name: Jobs programados (respaldo)
 # CRON_SECRET (el mismo valor que en Railway).
 on:
   schedule:
-    - cron: '15 * * * *' # cada hora: carrito abandonado y volvió el stock
+    - cron: '15 * * * *' # cada hora: carrito abandonado, volvió el stock y vencimientos mayoristas
     - cron: '30 9 * * *' # diario: Plan Rivedere
   workflow_dispatch:
 
@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ vars.API_URL != '' }}
     steps:
-      - name: Carrito abandonado + volvió el stock
+      - name: Carrito abandonado + volvió el stock + vencimientos mayoristas
         if: ${{ github.event.schedule != '30 9 * * *' }}
         run: |
-          for job in carrito-abandonado volvio-stock; do
+          for job in carrito-abandonado volvio-stock vencimientos-mayoristas; do
             curl -fsS -X POST "${{ vars.API_URL }}/jobs/$job" -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" || echo "falló $job"
           done
       - name: Plan Rivedere

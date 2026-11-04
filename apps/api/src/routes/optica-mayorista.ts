@@ -4,7 +4,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
+import { guardarArchivo } from '../lib/archivos.js';
+import { remitoPdf, numeroRemito } from '../lib/documentos-mayorista.js';
 import { Errors } from '../lib/errors.js';
+import { cargarPedidoMayorista, evaluarAprobacion, solicitarDevolucion } from '../lib/gestion-mayorista.js';
 import { fichaTecnicaPdf, kitProductoZip } from '../lib/kit-producto.js';
 import {
   VENDIBLE_MAYORISTA,
@@ -29,12 +32,13 @@ import {
   carritoMayoristaInput,
   catalogoMayoristaQuery,
   confirmarMayoristaInput,
+  devolucionMayoristaInput,
   pedidosMayoristasQuery,
 } from '../schemas/mayorista.js';
 import { categoriaConDescendientes } from './admin/categorias.js';
 
 const listQuery = paginationQuery.extend({ pageSize: paginationQuery.shape.pageSize.default(24) }).extend(catalogoMayoristaQuery.shape);
-const pedidosQuery = paginationQuery.extend(pedidosMayoristasQuery.omit({ opticaId: true }).shape);
+const pedidosQuery = paginationQuery.extend(pedidosMayoristasQuery.pick({ estado: true, q: true }).shape);
 
 const ORDEN: Record<string, Prisma.ProductoOrderByWithRelationInput[]> = {
   nombre: [{ nombre: 'asc' }],
@@ -205,10 +209,10 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
   // ------------------------------------------------------------------
 
   async function pedidoPropio(request: { params: { id: string }; optica?: { id: string } }) {
-    const p = await prisma.pedidoMayorista.findUnique({ where: { id: request.params.id }, include: pedidoMayoristaInclude });
+    const p = await prisma.pedidoMayorista.findUnique({ where: { id: request.params.id }, select: { opticaId: true } });
     if (!p) throw Errors.notFound('Pedido no encontrado');
     if (p.opticaId !== request.optica!.id) throw Errors.forbidden('Este pedido es de otra óptica');
-    return p;
+    return cargarPedidoMayorista(request.params.id);
   }
 
   app.post('/pedidos', async (request, reply) => {
@@ -218,7 +222,9 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
       if (!origen || origen.opticaId !== request.optica!.id) body.repetidoDeId = null;
     }
     const user = await prisma.user.findUniqueOrThrow({ where: { id: request.user.sub }, select: { id: true, nombre: true, email: true } });
-    const p = await confirmarPedidoMayorista(user, request.optica!, body);
+    const creado = await confirmarPedidoMayorista(user, request.optica!, body);
+    // B2B 3: dentro del crédito y sin deuda en mora se aprueba solo; si no, queda EN_REVISION.
+    const p = await evaluarAprobacion(app.env, creado.id);
     return reply.status(201).send(serializePedidoMayorista(p));
   });
 
@@ -243,6 +249,36 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
     const p = await pedidoPropio(request);
     const { ajustes } = await repetirPedidoMayorista(request.user.sub, p);
     return { ...(await respuestaCarrito(request)), ajustes, repetidoDe: { id: p.id, numero: p.numero } };
+  });
+
+  /** Remito del pedido (una vez que salió del depósito). */
+  app.get<{ Params: { id: string } }>('/pedidos/:id/remito.pdf', async (request, reply) => {
+    const p = await pedidoPropio(request);
+    if (!p.numeroRemito) throw Errors.conflict('El remito todavía no está disponible');
+    return reply
+      .header('content-type', 'application/pdf')
+      .header('content-disposition', `inline; filename="remito-${numeroRemito(p.numeroRemito)}-${p.numero}.pdf"`)
+      .header('cache-control', 'private, no-store')
+      .send(await remitoPdf(p));
+  });
+
+  // ------------------------------------------------------------------
+  // Devoluciones (B2B 3)
+  // ------------------------------------------------------------------
+
+  app.post('/devoluciones/fotos', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    if (!request.isMultipart()) throw Errors.badRequest('Adjuntá una foto');
+    const file = await request.file();
+    if (!file) throw Errors.badRequest('Adjuntá una foto');
+    return reply.status(201).send(await guardarArchivo(app.env, file, 'opticas-devoluciones', 'la foto'));
+  });
+
+  app.post<{ Params: { id: string } }>('/pedidos/:id/devoluciones', async (request, reply) => {
+    const p = await pedidoPropio(request);
+    const body = parse(devolucionMayoristaInput, request.body);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: request.user.sub }, select: { id: true, nombre: true } });
+    const d = await solicitarDevolucion(app.env, p.id, user, body);
+    return reply.status(201).send({ id: d.id, estado: d.estado, pedido: serializePedidoMayorista(await cargarPedidoMayorista(p.id)) });
   });
 };
 

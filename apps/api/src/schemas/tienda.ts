@@ -63,6 +63,9 @@ export const opticaInput = z.object({
   descuentoPct: z.number().min(0, 'El descuento no puede ser negativo').max(90, 'El descuento máximo es 90%').default(0),
   minimoTipo: z.enum(['NINGUNO', 'UNIDADES', 'MONTO']).nullable().optional(),
   minimoValor: z.number().min(0).max(100_000_000).nullable().optional(),
+  // B2B 3: cuenta corriente (se guardan en cuentas_corrientes, no en la óptica).
+  limiteCredito: z.number().min(0, 'El límite no puede ser negativo').max(1_000_000_000).optional(),
+  plazoPagoDias: z.number().int().min(0).max(365).optional(),
 });
 export const opticaUpdate = partialSinDefaults(opticaInput.shape);
 

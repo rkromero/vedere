@@ -152,7 +152,7 @@ describe.skipIf(!hasDb)('jobs (integración)', () => {
     expect((await ctx.inject('POST', '/jobs/volvio-stock')).statusCode).toBe(403);
     expect((await ctx.inject('POST', '/jobs/volvio-stock', undefined, undefined, { 'x-cron-secret': 'otro' })).statusCode).toBe(403);
     const lista = await ctx.inject('GET', '/jobs', undefined, undefined, { 'x-cron-secret': CRON });
-    expect(lista.json().items).toEqual(['carrito-abandonado', 'volvio-stock', 'rivedere']);
+    expect(lista.json().items).toEqual(['carrito-abandonado', 'volvio-stock', 'rivedere', 'vencimientos-mayoristas']);
     const ok = await ctx.inject('POST', '/jobs/volvio-stock', undefined, undefined, { 'x-cron-secret': CRON });
     expect(ok.statusCode, ok.body).toBe(200);
     expect(ok.json()).toMatchObject({ job: 'volvio-stock', enviados: 0 });

@@ -31,10 +31,18 @@ const listQuery = paginationQuery.extend({
 
 /** Óptica para el backoffice: Decimal → number, más carga del día y usuarios vinculados. */
 export function serializeOpticaAdmin(
-  o: Optica & { asignadosHoy?: number; _count?: { usuarios: number; pedidos: number } },
+  o: Optica & {
+    asignadosHoy?: number;
+    _count?: { usuarios: number; pedidos: number };
+    cuentaCorriente?: { limiteCredito: Prisma.Decimal; plazoPagoDias: number } | null;
+  },
 ) {
+  const { cuentaCorriente, ...rest } = o;
   return {
-    ...o,
+    ...rest,
+    // B2B 3: cuenta corriente (en B2B 4 la define el nivel).
+    limiteCredito: dec(cuentaCorriente?.limiteCredito) ?? 0,
+    plazoPagoDias: cuentaCorriente?.plazoPagoDias ?? 30,
     comisionPct: dec(o.comisionPct) ?? 0,
     descuentoPct: dec(o.descuentoPct) ?? 0,
     minimoValor: dec(o.minimoValor),
@@ -70,7 +78,7 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         where,
         orderBy: [{ orden: 'asc' }, { provincia: 'asc' }, { localidad: 'asc' }, { nombre: 'asc' }],
         ...paginate(q),
-        include: { _count: { select: { usuarios: true, pedidos: true } } },
+        include: { _count: { select: { usuarios: true, pedidos: true } }, cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
       }),
       prisma.pedido.groupBy({
         by: ['opticaId'],
@@ -158,7 +166,7 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { id: string } }>('/:id', async (request) => {
     const o = await prisma.optica.findUnique({
       where: { id: request.params.id },
-      include: { _count: { select: { usuarios: true, pedidos: true } } },
+      include: { _count: { select: { usuarios: true, pedidos: true } }, cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
     });
     if (!o) throw Errors.notFound('Óptica no encontrada');
     const usuarios = await prisma.user.findMany({
@@ -170,7 +178,7 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/', async (request, reply) => {
-    const body = parse(opticaInput, request.body);
+    const { limiteCredito, plazoPagoDias, ...body } = parse(opticaInput, request.body);
     const slug = await uniqueSlug(
       body.slug ?? body.nombre + ' ' + body.localidad,
       async (s) => !!(await prisma.optica.findUnique({ where: { slug: s }, select: { id: true } })),
@@ -182,13 +190,15 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         email: body.email || null,
         createdById: request.user.sub,
         updatedById: request.user.sub,
+        cuentaCorriente: { create: { limiteCredito: limiteCredito ?? 0, plazoPagoDias: plazoPagoDias ?? 30 } },
       },
+      include: { cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
     });
     return reply.status(201).send(serializeOpticaAdmin(o));
   });
 
   app.put<{ Params: { id: string } }>('/:id', async (request) => {
-    const body = parse(opticaUpdate, request.body);
+    const { limiteCredito, plazoPagoDias, ...body } = parse(opticaUpdate, request.body);
     const existing = await prisma.optica.findUnique({ where: { id: request.params.id } });
     if (!existing) throw Errors.notFound('Óptica no encontrada');
     if (body.slug && body.slug !== existing.slug) {
@@ -204,7 +214,21 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         ...body,
         ...(body.email !== undefined ? { email: body.email || null } : {}),
         updatedById: request.user.sub,
+        ...(limiteCredito !== undefined || plazoPagoDias !== undefined
+          ? {
+              cuentaCorriente: {
+                upsert: {
+                  create: { limiteCredito: limiteCredito ?? 0, plazoPagoDias: plazoPagoDias ?? 30 },
+                  update: {
+                    ...(limiteCredito !== undefined ? { limiteCredito } : {}),
+                    ...(plazoPagoDias !== undefined ? { plazoPagoDias } : {}),
+                  },
+                },
+              },
+            }
+          : {}),
       },
+      include: { cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
     });
     return serializeOpticaAdmin(o);
   });
@@ -217,6 +241,11 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
     if (!existing) throw Errors.notFound('Óptica no encontrada');
     if (existing._count.pedidos > 0) {
       throw Errors.conflict('La óptica tiene pedidos asociados: pausala en vez de eliminarla');
+    }
+    const movimientos = await prisma.movimientoCuenta.count({ where: { cuenta: { opticaId: existing.id } } });
+    const mayoristas = await prisma.pedidoMayorista.count({ where: { opticaId: existing.id } });
+    if (movimientos > 0 || mayoristas > 0) {
+      throw Errors.conflict('La óptica tiene compras o movimientos en su cuenta corriente: pausala en vez de eliminarla');
     }
     await prisma.optica.delete({ where: { id: existing.id } });
     return reply.status(204).send();

@@ -13,7 +13,7 @@ export interface Contexto {
   staffCookie: Cookies;
   clienteCookie: Cookies;
   ids: { admin: string; cliente: string; optica: string; coleccion: string; solA: string; recetado: string; productoSol: string; productoRecetado: string };
-  inject: (method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, cookies?: Cookies, payload?: unknown, headers?: Record<string, string>) => ReturnType<FastifyInstance['inject']>;
+  inject: (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, cookies?: Cookies, payload?: unknown, headers?: Record<string, string>) => ReturnType<FastifyInstance['inject']>;
 }
 
 export const direccion = {
@@ -34,6 +34,7 @@ export async function limpiarBase(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${lista} RESTART IDENTITY CASCADE`);
   await prisma.$executeRawUnsafe('ALTER SEQUENCE pedidos_numero_seq RESTART WITH 60001');
   await prisma.$executeRawUnsafe('ALTER SEQUENCE pedidos_mayoristas_numero_seq RESTART WITH 10001');
+  await prisma.$executeRawUnsafe('ALTER SEQUENCE pedidos_mayoristas_remito_seq RESTART WITH 1');
 }
 
 export async function crearContexto(envExtra: Record<string, string> = {}): Promise<Contexto> {
