@@ -372,45 +372,69 @@ model PromoMensaje {
 /// Óptica socia: arma, entrega y ajusta los pedidos cerca del cliente.
 /// `nombre` es el nombre comercial; `activa` = activa / pausada (pausada no recibe pedidos nuevos).
 model Optica {
-  id                String               @id @default(cuid())
-  nombre            String
-  slug              String               @unique
-  razonSocial       String?              @map("razon_social")
-  cuit              String?
-  direccion         String
-  localidad         String
-  provincia         String
-  codigoPostal      String               @map("codigo_postal")
-  lat               Float?
-  lng               Float?
+  id                       String               @id @default(cuid())
+  nombre                   String
+  slug                     String               @unique
+  razonSocial              String?              @map("razon_social")
+  cuit                     String?
+  direccion                String
+  localidad                String
+  provincia                String
+  codigoPostal             String               @map("codigo_postal")
+  lat                      Float?
+  lng                      Float?
   /// Radio de cobertura (km) para la asignación automática.
-  radioKm           Float                @default(10) @map("radio_km")
-  telefono          String?
-  whatsapp          String?
-  email             String?
-  horarios          String?
+  radioKm                  Float                @default(10) @map("radio_km")
+  telefono                 String?
+  whatsapp                 String?
+  email                    String?
+  horarios                 String?
   /// Óptico técnico responsable y su matrícula.
-  opticoResponsable String?              @map("optico_responsable")
-  matricula         String?
+  opticoResponsable        String?              @map("optico_responsable")
+  matricula                String?
   /// B2B: condición frente al IVA y habilitación municipal (archivo en R2).
-  condicionIva      CondicionIva?        @map("condicion_iva")
-  habilitacionUrl   String?              @map("habilitacion_url")
-  /// B2B 2: descuento (%) sobre el precio mayorista. En B2B 4 lo calcula el nivel de la óptica.
-  descuentoPct      Decimal              @default(0) @map("descuento_pct") @db.Decimal(5, 2)
+  condicionIva             CondicionIva?        @map("condicion_iva")
+  habilitacionUrl          String?              @map("habilitacion_url")
+  /// B2B 2/4: excepción de descuento (%) sobre el precio mayorista. null = el del nivel de la óptica.
+  descuentoPct             Decimal?             @map("descuento_pct") @db.Decimal(5, 2)
   /// Compra mínima propia (null = usa la general de ConfigMayorista).
-  minimoTipo        TipoMinimoMayorista? @map("minimo_tipo")
-  minimoValor       Decimal?             @map("minimo_valor") @db.Decimal(12, 2)
+  minimoTipo               TipoMinimoMayorista? @map("minimo_tipo")
+  minimoValor              Decimal?             @map("minimo_valor") @db.Decimal(12, 2)
   /// Comisión (%) que cobra la óptica sobre el total de cada pedido entregado.
-  comisionPct       Decimal              @default(0) @map("comision_pct") @db.Decimal(5, 2)
+  comisionPct              Decimal              @default(0) @map("comision_pct") @db.Decimal(5, 2)
   /// Pedidos que puede recibir por día (asignados ese día).
-  capacidadDiaria   Int                  @default(20) @map("capacidad_diaria")
-  activa            Boolean              @default(true)
-  orden             Int                  @default(0)
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  createdById       String?              @map("created_by_id")
-  updatedById       String?              @map("updated_by_id")
+  capacidadDiaria          Int                  @default(20) @map("capacidad_diaria")
+  activa                   Boolean              @default(true)
+  orden                    Int                  @default(0)
+  // B2B 4: niveles. `nivel` es el que resulta del recálculo mensual; `nivelManual` lo pisa hasta su vencimiento.
+  nivel                    NivelOptica          @default(VETRO)
+  puntaje                  Int?
+  nivelDesde               DateTime             @default(now()) @map("nivel_desde")
+  nivelCalculadoEn         DateTime?            @map("nivel_calculado_en")
+  /// Primer mes (AAAA-MM) en que el puntaje quedó debajo del nivel: arranca la gracia antes de bajar.
+  bajaPendienteDesde       String?              @map("baja_pendiente_desde")
+  nivelManual              NivelOptica?         @map("nivel_manual")
+  nivelManualMotivo        String?              @map("nivel_manual_motivo")
+  nivelManualHasta         DateTime?            @map("nivel_manual_hasta")
+  nivelManualPorId         String?              @map("nivel_manual_por_id")
+  /// Ópticas nuevas: beneficios de otro nivel (Cristallo) por un tiempo.
+  beneficioProvisorio      NivelOptica?         @map("beneficio_provisorio")
+  beneficioProvisorioHasta DateTime?            @map("beneficio_provisorio_hasta")
+  /// Logro Vitrina Vedere: muestrario entregado (lo marca el admin) y fotos de la vitrina (las sube la óptica).
+  muestrarioEn             DateTime?            @map("muestrario_en")
+  fotosVitrina             String[]             @default([]) @map("fotos_vitrina")
+  /// Logro Embajadora: óptica que la refirió.
+  referidaPorId            String?              @map("referida_por_id")
+  referidaPor              Optica?              @relation("OpticaReferida", fields: [referidaPorId], references: [id], onDelete: SetNull)
+  referidas                Optica[]             @relation("OpticaReferida")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  createdById              String?              @map("created_by_id")
+  updatedById              String?              @map("updated_by_id")
 
+  historialNiveles       HistorialNivel[]
+  logros                 LogroOptica[]
+  calificaciones         CalificacionPedido[]
   pedidos                Pedido[]
   usuarios               User[]
   eventos                PedidoEvento[]
@@ -776,15 +800,16 @@ model Pedido {
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
-  items       PedidoItem[]
-  pagos       Pago[]
-  reservas    ReservaStock[]
-  cuponUso    CuponUso?
-  eventos     PedidoEvento[]
-  turnos      Turno[]
-  solicitudes SolicitudCambio[]
-  reembolsos  Reembolso[]
-  emails      EmailEnviado[]
+  items        PedidoItem[]
+  pagos        Pago[]
+  reservas     ReservaStock[]
+  cuponUso     CuponUso?
+  eventos      PedidoEvento[]
+  turnos       Turno[]
+  solicitudes  SolicitudCambio[]
+  reembolsos   Reembolso[]
+  emails       EmailEnviado[]
+  calificacion CalificacionPedido?
 
   @@index([estado, createdAt])
   @@index([estadoPago])
@@ -1197,6 +1222,8 @@ model SolicitudOptica {
   usuarioId          String?               @map("usuario_id")
   resueltoPorId      String?               @map("resuelto_por_id")
   resueltoEn         DateTime?             @map("resuelto_en")
+  /// B2B 4: CUIT de la óptica socia que la recomendó (logro Embajadora).
+  referidaPorCuit    String?               @map("referida_por_cuit")
   createdAt          DateTime              @default(now()) @map("created_at")
   updatedAt          DateTime              @updatedAt @map("updated_at")
 
@@ -1408,8 +1435,9 @@ model CuentaCorriente {
   id            String   @id @default(cuid())
   opticaId      String   @unique @map("optica_id")
   optica        Optica   @relation(fields: [opticaId], references: [id], onDelete: Cascade)
-  limiteCredito Decimal  @default(0) @map("limite_credito") @db.Decimal(12, 2)
-  plazoPagoDias Int      @default(30) @map("plazo_pago_dias")
+  /// B2B 4: excepciones por óptica; null = los del nivel.
+  limiteCredito Decimal? @map("limite_credito") @db.Decimal(12, 2)
+  plazoPagoDias Int?     @map("plazo_pago_dias")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -1589,4 +1617,83 @@ model LiquidacionCierre {
   cerradoEn       DateTime @default(now()) @map("cerrado_en")
 
   @@map("liquidaciones_cierre")
+}
+
+// ------------------------------------------------------------------
+// B2B 4: niveles y logros de las ópticas socias
+// ------------------------------------------------------------------
+
+enum NivelOptica {
+  VETRO
+  CRISTALLO
+  PRISMA
+  ZAFIRO
+}
+
+enum TipoLogro {
+  PRIMER_FOCO
+  MANO_FIRME
+  MULTIFOCAL_MAESTRO
+  RELOJITO
+  VITRINA_VEDERE
+  EMBAJADORA
+}
+
+/// Configuración de niveles (fila única id = "default"): cortes, rangos, pesos, ponderación por línea,
+/// beneficios por nivel y puntos de logros. Los valores por defecto viven en apps/api/src/lib/niveles.ts.
+model ConfigNiveles {
+  id        String   @id @default("default")
+  datos     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("config_niveles")
+}
+
+/// Foto mensual del nivel y del puntaje de cada óptica.
+model HistorialNivel {
+  id             String       @id @default(cuid())
+  opticaId       String       @map("optica_id")
+  optica         Optica       @relation(fields: [opticaId], references: [id], onDelete: Cascade)
+  /// AAAA-MM
+  mes            String
+  puntaje        Int
+  puntosExtra    Int          @default(0) @map("puntos_extra")
+  nivelCalculado NivelOptica  @map("nivel_calculado")
+  nivel          NivelOptica
+  nivelAnterior  NivelOptica? @map("nivel_anterior")
+  motivo         String?
+  detalle        Json
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@unique([opticaId, mes])
+  @@index([mes])
+  @@map("historial_niveles")
+}
+
+model LogroOptica {
+  id         String    @id @default(cuid())
+  opticaId   String    @map("optica_id")
+  optica     Optica    @relation(fields: [opticaId], references: [id], onDelete: Cascade)
+  logro      TipoLogro
+  puntos     Int
+  obtenidoEn DateTime  @default(now()) @map("obtenido_en")
+
+  @@unique([opticaId, logro])
+  @@map("logros_opticas")
+}
+
+/// Calificación del cliente (1 a 5) a un pedido web entregado: alimenta la satisfacción de la óptica.
+model CalificacionPedido {
+  id         String   @id @default(cuid())
+  pedidoId   String   @unique @map("pedido_id")
+  pedido     Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  opticaId   String?  @map("optica_id")
+  optica     Optica?  @relation(fields: [opticaId], references: [id], onDelete: SetNull)
+  puntaje    Int
+  comentario String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([opticaId, createdAt])
+  @@map("calificaciones_pedidos")
 }

@@ -9,6 +9,7 @@ import type { Env } from '../env.js';
 import { Errors } from './errors.js';
 import { emailAdmin } from './email.js';
 import { geocodificar } from './geo.js';
+import { evaluarLogros, nivelInicial } from './niveles.js';
 import { enviarPlantilla } from './plantillas.js';
 import { uniqueSlug } from './slug.js';
 
@@ -45,6 +46,7 @@ export function serializeSolicitudOptica(s: SolicitudOptica & { optica?: Pick<Op
     matricula: s.matricula,
     habilitacionUrl: s.habilitacionUrl,
     habilitacionNombre: s.habilitacionNombre,
+    referidaPorCuit: s.referidaPorCuit,
     aceptaTerminosEn: s.aceptaTerminosEn,
     estado: s.estado,
     motivoRechazo: s.motivoRechazo,
@@ -153,6 +155,12 @@ export async function aprobarSolicitudOptica(
         async (x) => !!(await prisma.optica.findUnique({ where: { slug: x }, select: { id: true } })),
       );
 
+  // B2B 4: la óptica que la recomendó (por CUIT) suma el logro Embajadora.
+  const referente = s.referidaPorCuit
+    ? await prisma.optica.findFirst({ where: { cuit: s.referidaPorCuit, NOT: { cuit: s.cuit } }, select: { id: true } })
+    : null;
+  const inicial = await nivelInicial();
+
   const r = await prisma.$transaction(async (tx) => {
     const fiscales = {
       razonSocial: s.razonSocial,
@@ -192,6 +200,8 @@ export async function aprobarSolicitudOptica(
             lat: coords?.lat ?? null,
             lng: coords?.lng ?? null,
             activa: true,
+            ...inicial,
+            referidaPorId: referente?.id ?? null,
             ...(input.comisionPct !== undefined ? { comisionPct: input.comisionPct } : {}),
             ...(input.radioKm !== undefined ? { radioKm: input.radioKm } : {}),
             ...(input.capacidadDiaria !== undefined ? { capacidadDiaria: input.capacidadDiaria } : {}),
@@ -225,6 +235,8 @@ export async function aprobarSolicitudOptica(
     });
     return { optica, usuario, solicitud };
   });
+
+  if (referente) await evaluarLogros(env, referente.id);
 
   await enviarPlantilla(env, {
     tipo: 'SOLICITUD_OPTICA_APROBADA',

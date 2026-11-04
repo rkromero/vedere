@@ -17,7 +17,7 @@ jobs:
       - name: Carrito abandonado + volvió el stock + vencimientos mayoristas
         if: ${{ github.event.schedule != '30 9 * * *' }}
         run: |
-          for job in carrito-abandonado volvio-stock vencimientos-mayoristas; do
+          for job in carrito-abandonado volvio-stock vencimientos-mayoristas niveles; do
             curl -fsS -X POST "${{ vars.API_URL }}/jobs/$job" -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" || echo "falló $job"
           done
       - name: Plan Rivedere

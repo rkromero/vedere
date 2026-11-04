@@ -27,6 +27,7 @@ import sitioRoutes from './routes/sitio.js';
 import feedsRoutes from './routes/feeds.js';
 import jobsRoutes from './routes/jobs.js';
 import opticaCuentaRoutes from './routes/optica-cuenta.js';
+import opticaNivelRoutes from './routes/optica-nivel.js';
 import opticaMayoristaRoutes from './routes/optica-mayorista.js';
 
 declare module 'fastify' {
@@ -115,6 +116,7 @@ export async function buildApp(opts: BuildAppOptions = {}) {
   await app.register(opticaRoutes, { prefix: '/optica' });
   await app.register(opticaMayoristaRoutes, { prefix: '/optica/mayorista' });
   await app.register(opticaCuentaRoutes, { prefix: '/optica/cuenta' });
+  await app.register(opticaNivelRoutes, { prefix: '/optica/nivel' });
   await app.register(cuentaRoutes, { prefix: '/cuenta' });
   await app.register(sitioRoutes, { prefix: '/sitio' });
   await app.register(programaOpticasRoutes, { prefix: '/sitio/opticas' });

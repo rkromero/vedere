@@ -57,7 +57,8 @@ type Campo =
   | 'email'
   | 'opticoResponsable'
   | 'matricula'
-  | 'web';
+  | 'web'
+  | 'referidaPorCuit';
 
 const VACIO: Record<Campo, string> = {
   razonSocial: '',
@@ -74,6 +75,7 @@ const VACIO: Record<Campo, string> = {
   opticoResponsable: '',
   matricula: '',
   web: '',
+  referidaPorCuit: '',
 };
 
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -169,6 +171,7 @@ export function SolicitudOpticaForm() {
       const r = await tiendaApi.post<{ email: string }>('/sitio/opticas/solicitudes', {
         ...form,
         whatsapp: form.whatsapp || null,
+        referidaPorCuit: form.referidaPorCuit.trim() || null,
         habilitacionUrl: habilitacion!.url,
         habilitacionNombre: habilitacion!.nombre,
         aceptaTerminos: true,
@@ -282,6 +285,9 @@ export function SolicitudOpticaForm() {
             {(p) => <Input {...p} name="matricula" value={form.matricula} onChange={set('matricula')} placeholder="MN 4521" />}
           </Field>
         </div>
+        <Field label="¿Te recomendó otra óptica socia?" error={errores.referidaPorCuit} hint="Opcional: el CUIT de la óptica que te invitó.">
+          {(p) => <Input {...p} name="referidaPorCuit" inputMode="numeric" placeholder="30-71234567-1" value={form.referidaPorCuit} onChange={set('referidaPorCuit')} />}
+        </Field>
         <div className="font-text">
           <p className="mb-1.5 text-sm font-medium">
             Habilitación del local <span className="text-carey" aria-hidden="true">*</span>

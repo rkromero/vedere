@@ -59,13 +59,15 @@ export const opticaInput = z.object({
   // B2B 1: condición frente al IVA y habilitación.
   condicionIva: z.enum(['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTO', 'EXENTO']).nullable().optional(),
   habilitacionUrl: nullableStr(500),
-  // B2B 2: descuento sobre el precio mayorista y compra mínima propia (null = la general).
-  descuentoPct: z.number().min(0, 'El descuento no puede ser negativo').max(90, 'El descuento máximo es 90%').default(0),
+  // B2B 2/4: excepción de descuento sobre el precio mayorista (null = el del nivel) y compra mínima propia.
+  descuentoPct: z.number().min(0, 'El descuento no puede ser negativo').max(90, 'El descuento máximo es 90%').nullable().optional(),
   minimoTipo: z.enum(['NINGUNO', 'UNIDADES', 'MONTO']).nullable().optional(),
   minimoValor: z.number().min(0).max(100_000_000).nullable().optional(),
-  // B2B 3: cuenta corriente (se guardan en cuentas_corrientes, no en la óptica).
-  limiteCredito: z.number().min(0, 'El límite no puede ser negativo').max(1_000_000_000).optional(),
-  plazoPagoDias: z.number().int().min(0).max(365).optional(),
+  // B2B 3/4: excepciones de cuenta corriente (null = las del nivel; se guardan en cuentas_corrientes).
+  limiteCredito: z.number().min(0, 'El límite no puede ser negativo').max(1_000_000_000).nullable().optional(),
+  plazoPagoDias: z.number().int().min(0).max(365).nullable().optional(),
+  // B2B 4: muestrario Vedere entregado (logro Vitrina Vedere).
+  muestrario: z.boolean().optional(),
 });
 export const opticaUpdate = partialSinDefaults(opticaInput.shape);
 

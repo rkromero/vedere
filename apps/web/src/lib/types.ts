@@ -202,12 +202,17 @@ export interface OpticaAdmin {
   condicionIva?: CondicionIva | null;
   habilitacionUrl?: string | null;
   // B2B 2: descuento sobre el precio mayorista y compra mínima propia (null = la general).
-  descuentoPct?: number;
+  descuentoPct?: number | null;
   minimoTipo?: 'NINGUNO' | 'UNIDADES' | 'MONTO' | null;
   minimoValor?: number | null;
-  // B2B 3: cuenta corriente (en B2B 4 lo define el nivel).
-  limiteCredito?: number;
-  plazoPagoDias?: number;
+  // B2B 3/4: excepciones de cuenta corriente (null = según el nivel de la óptica).
+  limiteCredito?: number | null;
+  plazoPagoDias?: number | null;
+  // B2B 4: nivel y condiciones vigentes.
+  muestrario?: boolean;
+  nivelVigente?: 'VETRO' | 'CRISTALLO' | 'PRISMA' | 'ZAFIRO';
+  nivelNombre?: string;
+  condiciones?: { descuentoPct: number; limiteCredito: number; plazoPagoDias: number; nivelBeneficios: string } | null;
   /** Pedidos asignados hoy (lo calcula la API en el listado). */
   asignadosHoy?: number;
   usuarios?: number;

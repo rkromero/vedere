@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { NivelChip } from '@/components/niveles/NivelPanel';
 import type { ChangeEvent, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -47,6 +48,7 @@ interface FormState {
   minimoValor: string;
   limiteCredito: string;
   plazoPagoDias: string;
+  muestrario: boolean;
   direccion: string;
   localidad: string;
   provincia: string;
@@ -70,11 +72,12 @@ const vacio: FormState = {
   radioKm: '10',
   comisionPct: '10',
   capacidadDiaria: '20',
-  descuentoPct: '0',
+  descuentoPct: '',
   minimoTipo: '',
   minimoValor: '',
-  limiteCredito: '0',
-  plazoPagoDias: '30',
+  limiteCredito: '',
+  plazoPagoDias: '',
+  muestrario: false,
   direccion: '',
   localidad: '',
   provincia: 'Buenos Aires',
@@ -126,11 +129,12 @@ export function OpticasTable({
             radioKm: String(o.radioKm ?? 10),
             comisionPct: String(o.comisionPct ?? 0),
             capacidadDiaria: String(o.capacidadDiaria ?? 20),
-            descuentoPct: String(o.descuentoPct ?? 0),
+            descuentoPct: o.descuentoPct == null ? '' : String(o.descuentoPct),
             minimoTipo: o.minimoTipo ?? '',
             minimoValor: o.minimoValor === null || o.minimoValor === undefined ? '' : String(o.minimoValor),
-            limiteCredito: String(o.limiteCredito ?? 0),
-            plazoPagoDias: String(o.plazoPagoDias ?? 30),
+            limiteCredito: o.limiteCredito == null ? '' : String(o.limiteCredito),
+            plazoPagoDias: o.plazoPagoDias == null ? '' : String(o.plazoPagoDias),
+            muestrario: !!o.muestrario,
             direccion: o.direccion,
             localidad: o.localidad,
             provincia: o.provincia,
@@ -176,11 +180,12 @@ export function OpticasTable({
       radioKm: Number(form.radioKm.replace(',', '.')) || 10,
       comisionPct: Number(form.comisionPct.replace(',', '.')) || 0,
       capacidadDiaria: Number(form.capacidadDiaria) || 20,
-      descuentoPct: Number(form.descuentoPct.replace(',', '.')) || 0,
+      descuentoPct: form.descuentoPct.trim() === '' ? null : Number(form.descuentoPct.replace(',', '.')) || 0,
       minimoTipo: (form.minimoTipo || null) as OpticaAdmin['minimoTipo'],
       minimoValor: form.minimoTipo ? Number(form.minimoValor.replace(',', '.')) || 0 : null,
-      limiteCredito: Number(form.limiteCredito.replace(/\./g, '').replace(',', '.')) || 0,
-      plazoPagoDias: Number(form.plazoPagoDias) || 0,
+      limiteCredito: form.limiteCredito.trim() === '' ? null : Number(form.limiteCredito.replace(/\./g, '').replace(',', '.')) || 0,
+      plazoPagoDias: form.plazoPagoDias.trim() === '' ? null : Number(form.plazoPagoDias) || 0,
+      muestrario: form.muestrario,
       direccion: form.direccion.trim(),
       localidad: form.localidad.trim(),
       provincia: form.provincia.trim(),
@@ -287,6 +292,7 @@ export function OpticasTable({
                 <Th>Dirección</Th>
                 <Th>Contacto</Th>
                 <Th align="right">Radio</Th>
+                <Th>Nivel</Th>
                 <Th align="right">Comisión</Th>
                 <Th align="right">Hoy</Th>
                 <Th>Estado</Th>
@@ -329,6 +335,15 @@ export function OpticasTable({
                     {!o.whatsapp && !o.telefono && !o.email && '—'}
                   </Td>
                   <Td align="right" className="tabular-nums">{o.radioKm} km</Td>
+                  <Td>
+                    {o.nivelVigente ? (
+                      <a href={`/admin/niveles/${o.id}`} className="hover:underline">
+                        <NivelChip nivel={o.nivelVigente} />
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
                   <Td align="right" className="tabular-nums">{o.comisionPct}%</Td>
                   <Td align="right" className="tabular-nums">
                     {o.asignadosHoy ?? 0}/{o.capacidadDiaria}
@@ -435,9 +450,9 @@ export function OpticasTable({
             <Field
               label="Descuento mayorista (%)"
               error={errors.descuentoPct}
-              hint="Sobre el precio mayorista de lista. Lo ve sólo esta óptica en su portal."
+              hint="Excepción sobre el precio mayorista. Vacío = el del nivel de la óptica."
             >
-              <Input value={form.descuentoPct} onChange={f('descuentoPct')} inputMode="decimal" data-testid="optica-descuento" />
+              <Input value={form.descuentoPct} onChange={f('descuentoPct')} inputMode="decimal" placeholder="Según nivel" data-testid="optica-descuento" />
             </Field>
             <Field label="Compra mínima" error={errors.minimoTipo} hint="Vacío = la general de Configuración.">
               <div className="flex gap-2">
@@ -458,12 +473,16 @@ export function OpticasTable({
                 )}
               </div>
             </Field>
-            <Field label="Límite de crédito ($)" error={errors.limiteCredito} hint="Cuenta corriente: pedidos dentro del disponible se aprueban solos. 0 = todo pasa a revisión.">
-              <Input value={form.limiteCredito} onChange={f('limiteCredito')} inputMode="decimal" data-testid="optica-limite-credito" />
+            <Field label="Límite de crédito ($)" error={errors.limiteCredito} hint="Excepción. Vacío = el del nivel. 0 = todo pasa a revisión.">
+              <Input value={form.limiteCredito} onChange={f('limiteCredito')} inputMode="decimal" placeholder="Según nivel" data-testid="optica-limite-credito" />
             </Field>
-            <Field label="Plazo de pago (días)" error={errors.plazoPagoDias} hint="Desde el despacho. Cada pedido conserva el plazo vigente al comprar.">
-              <Input type="number" min={0} max={180} value={form.plazoPagoDias} onChange={f('plazoPagoDias')} data-testid="optica-plazo-pago" />
+            <Field label="Plazo de pago (días)" error={errors.plazoPagoDias} hint="Excepción. Vacío = el del nivel. Cada pedido conserva el plazo vigente al comprar.">
+              <Input type="number" min={0} max={180} value={form.plazoPagoDias} onChange={f('plazoPagoDias')} placeholder="Según nivel" data-testid="optica-plazo-pago" />
             </Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm">
+              <input type="checkbox" checked={form.muestrario} onChange={(e) => setForm({ ...form, muestrario: e.target.checked })} data-testid="optica-muestrario" />
+              Tiene el muestrario Vedere (logro Vitrina)
+            </label>
             <Field label="Dirección" required error={errors.direccion}>
               <Input
                 value={form.direccion}

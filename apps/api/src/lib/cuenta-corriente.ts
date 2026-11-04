@@ -10,6 +10,7 @@ import { enviarEmail, layoutEmail } from './email.js';
 import { Errors } from './errors.js';
 import { liquidacionGeneral, rangoMes } from './liquidacion.js';
 import { getConfigMayorista, round2 } from './mayorista.js';
+import { condicionesDe, condicionesOptica, getConfigNiveles, opticaNivelSelect } from './niveles.js';
 import { dec } from './serialize.js';
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -115,7 +116,7 @@ export interface ResumenCuenta {
 export async function resumenCuenta(opticaId: string, opts: { db?: Db; ahora?: Date } = {}): Promise<ResumenCuenta> {
   const db = opts.db ?? prisma;
   const ahora = opts.ahora ?? new Date();
-  const [cuenta, cfg] = await Promise.all([cuentaDe(opticaId, db), getConfigMayorista(db)]);
+  const [cuenta, cfg, cond] = await Promise.all([cuentaDe(opticaId, db), getConfigMayorista(db), condicionesOptica(opticaId, db, ahora)]);
   const [saldo, comprometidoAgg, pendientes] = await Promise.all([
     saldoDe(cuenta.id, db),
     db.pedidoMayorista.aggregate({
@@ -124,7 +125,8 @@ export async function resumenCuenta(opticaId: string, opts: { db?: Db; ahora?: D
     }),
     pedidosConDeuda(opticaId, db, ahora),
   ]);
-  const limiteCredito = dec(cuenta.limiteCredito)!;
+  // B2B 4: límite y plazo salen del nivel de la óptica (salvo excepción cargada en su cuenta).
+  const limiteCredito = cond.limiteCredito;
   const comprometido = round2(dec(comprometidoAgg._sum.total) ?? 0);
   const deuda = Math.max(saldo, 0);
   const vencidos = pendientes.filter((p) => p.venceEn < ahora);
@@ -134,7 +136,7 @@ export async function resumenCuenta(opticaId: string, opts: { db?: Db; ahora?: D
     opticaId,
     cuentaId: cuenta.id,
     limiteCredito,
-    plazoPagoDias: cuenta.plazoPagoDias,
+    plazoPagoDias: cond.plazoPagoDias,
     saldo,
     comprometido,
     disponible: round2(limiteCredito - saldo - comprometido),
@@ -249,7 +251,7 @@ export async function registrarDebito(
   ahora = new Date(),
 ) {
   const cuenta = await cuentaDe(pedido.opticaId, tx);
-  const plazo = pedido.plazoPagoDias ?? cuenta.plazoPagoDias;
+  const plazo = pedido.plazoPagoDias ?? (await condicionesOptica(pedido.opticaId, tx, ahora)).plazoPagoDias;
   const vence = new Date(ahora.getTime() + plazo * DIA);
   const ya = await tx.movimientoCuenta.findUnique({ where: { clave: `debito:${pedido.id}` } });
   if (!ya) {
@@ -617,10 +619,18 @@ async function avisarPagoOptica(env: Env, opticaId: string, titulo: string, cuer
 // ------------------------------------------------------------------
 
 export async function cuentasConSaldo(ahora = new Date()) {
-  const opticas = await prisma.optica.findMany({
-    orderBy: { nombre: 'asc' },
-    select: { id: true, nombre: true, activa: true, cuentaCorriente: { select: { id: true, limiteCredito: true, plazoPagoDias: true } } },
-  });
+  const [opticas, cfgNiveles] = await Promise.all([
+    prisma.optica.findMany({
+      orderBy: { nombre: 'asc' },
+      select: {
+        ...opticaNivelSelect,
+        nombre: true,
+        activa: true,
+        cuentaCorriente: { select: { id: true, limiteCredito: true, plazoPagoDias: true } },
+      },
+    }),
+    getConfigNiveles(),
+  ]);
   const saldos = await prisma.movimientoCuenta.groupBy({ by: ['cuentaId'], _sum: { importe: true } });
   const saldoPorCuenta = new Map(saldos.map((s) => [s.cuentaId, round2(dec(s._sum.importe) ?? 0)]));
   const pendientes = await prisma.pedidoMayorista.findMany({
@@ -634,11 +644,12 @@ export async function cuentasConSaldo(ahora = new Date()) {
   }
   return opticas.map((o) => {
     const saldo = o.cuentaCorriente ? (saldoPorCuenta.get(o.cuentaCorriente.id) ?? 0) : 0;
-    const limite = dec(o.cuentaCorriente?.limiteCredito) ?? 0;
+    const cond = condicionesDe(o, o.cuentaCorriente, cfgNiveles, ahora);
     return {
       optica: { id: o.id, nombre: o.nombre, activa: o.activa },
-      limiteCredito: limite,
-      plazoPagoDias: o.cuentaCorriente?.plazoPagoDias ?? 30,
+      nivel: cond.nivel,
+      limiteCredito: cond.limiteCredito,
+      plazoPagoDias: cond.plazoPagoDias,
       saldo,
       deudaVencida: round2(Math.min(Math.max(saldo, 0), vencidoPorOptica.get(o.id) ?? 0)),
     };

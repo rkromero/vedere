@@ -8,6 +8,7 @@ import { ejecutarPostPago } from './post-pago.js';
 import type { PedidoParaEmail } from './email.js';
 import { AppError, Errors } from './errors.js';
 import { distanciaKm } from './geo.js';
+import { condicionesDe, getConfigNiveles } from './niveles.js';
 import { cargarConfig, pedidoInclude } from './pedidos.js';
 import type { PedidoFull } from './pedidos.js';
 import { dec } from './serialize.js';
@@ -121,6 +122,10 @@ export interface OpticaCandidata {
   activa: boolean;
   /** Pedidos asignados hoy. */
   asignadosHoy: number;
+  /** B2B 4: prioridad por nivel (0 Vetro … 3 Zafiro): a igual distancia gana la de mayor nivel. */
+  prioridadNivel?: number;
+  /** B2B 4: radio (km) dentro del cual la óptica tiene prioridad sobre las demás. */
+  radioExclusividadKm?: number;
 }
 
 export interface Evaluada<T extends OpticaCandidata = OpticaCandidata> {
@@ -129,10 +134,16 @@ export interface Evaluada<T extends OpticaCandidata = OpticaCandidata> {
   dentroRadio: boolean;
   conCupo: boolean;
   excluida: boolean;
+  /** El cliente está dentro del radio de exclusividad de la óptica. */
+  exclusiva: boolean;
   elegible: boolean;
 }
 
-/** Evalúa y ordena las ópticas por distancia al cliente. La primera `elegible` es la asignación automática. */
+/**
+ * Evalúa y ordena las ópticas para el cliente. La primera `elegible` es la asignación automática.
+ * Orden: primero las que tienen al cliente dentro de su radio de exclusividad (beneficio de nivel), después
+ * por distancia; a igual distancia, la de mayor nivel; y por último por nombre.
+ */
 export function evaluarOpticas<T extends OpticaCandidata>(
   cliente: { lat: number | null; lng: number | null },
   opticas: T[],
@@ -144,9 +155,16 @@ export function evaluarOpticas<T extends OpticaCandidata>(
     const dentroRadio = km !== null && km <= o.radioKm;
     const conCupo = o.asignadosHoy < o.capacidadDiaria;
     const excluida = excluidas.includes(o.id);
-    return { optica: o, distanciaKm: km, dentroRadio, conCupo, excluida, elegible: o.activa && dentroRadio && conCupo && !excluida };
+    const exclusiva = km !== null && (o.radioExclusividadKm ?? 0) > 0 && km <= (o.radioExclusividadKm ?? 0);
+    return { optica: o, distanciaKm: km, dentroRadio, conCupo, excluida, exclusiva, elegible: o.activa && dentroRadio && conCupo && !excluida };
   });
-  out.sort((a, b) => (a.distanciaKm ?? 1e9) - (b.distanciaKm ?? 1e9) || a.optica.nombre.localeCompare(b.optica.nombre, 'es'));
+  out.sort(
+    (a, b) =>
+      Number(b.exclusiva) - Number(a.exclusiva) ||
+      (a.distanciaKm ?? 1e9) - (b.distanciaKm ?? 1e9) ||
+      (b.optica.prioridadNivel ?? 0) - (a.optica.prioridadNivel ?? 0) ||
+      a.optica.nombre.localeCompare(b.optica.nombre, 'es'),
+  );
   return out;
 }
 
@@ -159,18 +177,25 @@ export function elegirOptica<T extends OpticaCandidata>(
 }
 
 /** Todas las ópticas con su carga de hoy (para evaluar). */
-export async function cargarCandidatas(db: Db = prisma, ahora = new Date()): Promise<Array<Optica & { asignadosHoy: number }>> {
+export async function cargarCandidatas(
+  db: Db = prisma,
+  ahora = new Date(),
+): Promise<Array<Optica & { asignadosHoy: number; prioridadNivel: number; radioExclusividadKm: number }>> {
   const { desde, hasta } = rangoDiaLocal(ahora);
-  const [opticas, carga] = await Promise.all([
-    db.optica.findMany({ orderBy: [{ orden: 'asc' }, { nombre: 'asc' }] }),
+  const [opticas, carga, cfg] = await Promise.all([
+    db.optica.findMany({ orderBy: [{ orden: 'asc' }, { nombre: 'asc' }], include: { cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } } }),
     db.pedido.groupBy({
       by: ['opticaId'],
       where: { opticaId: { not: null }, asignadoEn: { gte: desde, lt: hasta }, estado: { notIn: ['CANCELADO', 'DEVUELTO'] } },
       _count: { _all: true },
     }),
+    getConfigNiveles(db),
   ]);
   const porOptica = new Map(carga.map((c) => [c.opticaId!, c._count._all]));
-  return opticas.map((o) => ({ ...o, asignadosHoy: porOptica.get(o.id) ?? 0 }));
+  return opticas.map(({ cuentaCorriente, ...o }) => {
+    const cond = condicionesDe(o, cuentaCorriente, cfg, ahora);
+    return { ...o, asignadosHoy: porOptica.get(o.id) ?? 0, prioridadNivel: cond.prioridad, radioExclusividadKm: cond.radioExclusividadKm };
+  });
 }
 
 // ---------- Máquina de estados ----------
@@ -370,7 +395,7 @@ export async function asignarAutomatico(
       // Sin coordenadas: la óptica elegida por el cliente en el checkout, si está activa y con cupo.
       const pref = candidatas.find((o) => o.id === pedido.opticaId);
       if (pref && pref.activa && pref.asignadosHoy < pref.capacidadDiaria && !excluidas.includes(pref.id)) {
-        elegida = { optica: pref, distanciaKm: null, dentroRadio: false, conCupo: true, excluida: false, elegible: true };
+        elegida = { optica: pref, distanciaKm: null, dentroRadio: false, conCupo: true, excluida: false, exclusiva: false, elegible: true };
         criterio = 'checkout';
       }
     }

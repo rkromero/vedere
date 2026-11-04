@@ -20,6 +20,7 @@ const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boo
   { href: '/admin/opticas', label: 'Ópticas' },
   { href: '/admin/pedidos-mayoristas', label: 'Pedidos mayoristas' },
   { href: '/admin/cuentas', label: 'Cuentas corrientes' },
+  { href: '/admin/niveles', label: 'Niveles de ópticas' },
   { href: '/admin/liquidaciones', label: 'Liquidaciones' },
   { href: '/admin/promos', label: 'Barra de promo' },
   { href: '/admin/cupones', label: 'Cupones' },

@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Env } from '../env.js';
 import { jobCarritoAbandonado } from './carrito-abandonado.js';
 import { jobRivedere } from './rivedere.js';
+import { jobNiveles } from './niveles.js';
 import { jobVencimientosMayoristas } from './vencimientos-mayoristas.js';
 import { jobVolvioStock } from './volvio-stock.js';
 
@@ -17,6 +18,8 @@ export const JOBS: Record<string, Job> = {
   rivedere: jobRivedere,
   // B2B 3: recordatorios de vencimiento de la cuenta corriente de las ópticas.
   'vencimientos-mayoristas': jobVencimientosMayoristas,
+  // B2B 4: recálculo mensual de niveles (sólo actúa la primera vez de cada mes).
+  niveles: jobNiveles,
 };
 
 export const NOMBRES_JOBS = Object.keys(JOBS);
@@ -46,7 +49,7 @@ export function iniciarJobs(app: FastifyInstance): () => void {
   };
 
   agendar(['carrito-abandonado', 'volvio-stock', 'vencimientos-mayoristas'], env.CARRITO_ABANDONADO_INTERVALO_MIN * 60_000);
-  agendar(['rivedere'], env.RIVEDERE_INTERVALO_HORAS * 3600_000);
+  agendar(['rivedere', 'niveles'], env.RIVEDERE_INTERVALO_HORAS * 3600_000);
 
   return () => timers.forEach((t) => clearInterval(t));
 }

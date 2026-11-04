@@ -9,6 +9,7 @@ import { esTerminal, indicePaso, labelEstadoCliente, pasosPedido } from '@/lib/t
 import type { PedidoCuenta } from '@/lib/tienda/cuenta';
 import { Pastilla, Tarjeta } from './Tarjeta';
 import { RecetaResumen } from './RecetaResumen';
+import { CalificarPedido } from './CalificarPedido';
 
 const PUEDE_SOLICITAR: EstadoPedido[] = ['LISTO', 'ENVIADO', 'ENTREGADO'];
 
@@ -240,6 +241,12 @@ export function PedidoDetalleCliente({ pedido: p }: { pedido: PedidoCuenta }) {
           </div>
         </dl>
       </Tarjeta>
+
+      {p.estado === 'ENTREGADO' && (
+        <Tarjeta titulo="Calificá tu pedido">
+          <CalificarPedido pedidoId={p.id} inicial={p.calificacion ?? null} />
+        </Tarjeta>
+      )}
 
       {p.receta && (
         <Tarjeta titulo="Receta usada">

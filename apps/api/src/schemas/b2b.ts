@@ -58,6 +58,12 @@ export const solicitudOpticaInput = z.object({
     .max(500)
     .refine((v) => v.includes('/opticas-habilitaciones/'), 'Adjuntá la habilitación desde el formulario'),
   habilitacionNombre: z.string().trim().max(200).nullable().optional(),
+  /** B2B 4: CUIT de la óptica socia que la recomendó (opcional). */
+  referidaPorCuit: z
+    .union([cuitSchema, z.literal('')])
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
   aceptaTerminos: z.literal(true, { error: 'Tenés que aceptar los términos del programa' }),
   // Honeypot anti-spam.
   web: z.string().max(200).optional(),
