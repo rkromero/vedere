@@ -396,8 +396,8 @@ describe.skipIf(!hasDb)('B2B 3: cuenta corriente y gestión de pedidos mayorista
     expect(await jobVencimientosMayoristas(ctx.app.env, alVencer)).toBe(1);
     expect(await ctx.prisma.emailEnviado.count({ where: { tipo: 'CUENTA_VENCIMIENTO' } })).toBe(1);
     expect(await jobVencimientosMayoristas(ctx.app.env, alVencer)).toBe(0);
-    // Un pedido pagado no recibe avisos.
+    // El job también se dispara por POST /jobs/:nombre (sin CRON_SECRET configurado responde 403).
     const r = await ctx.inject('POST', '/jobs/vencimientos-mayoristas', undefined, {}, { 'x-cron-secret': ctx.app.env.CRON_SECRET ?? '' });
-    expect([200, 401, 503]).toContain(r.statusCode);
+    expect(r.statusCode).toBe(ctx.app.env.CRON_SECRET ? 200 : 403);
   });
 });
