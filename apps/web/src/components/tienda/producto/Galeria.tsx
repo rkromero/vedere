@@ -1,6 +1,7 @@
 'use client';
-// Galería de producto: swipe con scroll-snap en celular, miniaturas en desktop, zoom por hover y
-// lightbox a pantalla completa con zoom por toque.
+// Galería de producto estilo editorial: en desktop todas las fotos de la variante en una grilla de dos
+// columnas que scrollea con la página (el panel de compra queda fijo al lado); en celular carrusel con
+// scroll-snap y puntos. Cualquier foto abre el lightbox a pantalla completa con zoom por toque.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { IconChevronLeft, IconChevronRight, IconClose, IconZoom, cn } from '@vedere/ui';
@@ -20,7 +21,6 @@ function alt(img: Imagen, nombre: string, color: string, i: number) {
 export function Galeria({ imagenes, nombre, color, etiquetas }: Props) {
   const [actual, setActual] = useState(0);
   const [lightbox, setLightbox] = useState<number | null>(null);
-  const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
   const scroller = useRef<HTMLUListElement>(null);
 
   // Al cambiar de color (nuevas imágenes), volver a la primera.
@@ -45,36 +45,37 @@ export function Galeria({ imagenes, nombre, color, etiquetas }: Props) {
 
   if (imagenes.length === 0) {
     return (
-      <div className="flex aspect-square items-center justify-center rounded-2xl bg-gris-claro text-gris-texto">
+      <div className="flex aspect-square items-center justify-center bg-gris-claro text-gris-texto">
         Sin fotos todavía
       </div>
     );
   }
 
-  const principal = imagenes[actual] ?? imagenes[0];
-  if (!principal) return null;
-
   return (
-    <div className="lg:grid lg:grid-cols-[4.5rem_1fr] lg:gap-3">
-      {/* Miniaturas (desktop) */}
-      <ul className="order-first hidden lg:flex lg:flex-col lg:gap-2" aria-label="Miniaturas">
+    <div className="relative">
+      {/* Celular: carrusel con swipe */}
+      <ul
+        ref={scroller}
+        onScroll={onScroll}
+        className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto bg-gris-claro lg:hidden"
+        aria-label={`Fotos de ${nombre}`}
+        aria-roledescription="carrusel"
+      >
         {imagenes.map((img, i) => (
-          <li key={img.id ?? i}>
+          <li key={img.id ?? i} className="relative aspect-square w-full shrink-0 snap-center">
             <button
               type="button"
-              onClick={() => irA(i)}
-              aria-label={`Ver foto ${i + 1}`}
-              aria-current={i === actual ? 'true' : undefined}
-              className={cn(
-                'relative block aspect-square w-full overflow-hidden rounded-lg bg-gris-claro ring-offset-2 transition-shadow',
-                i === actual ? 'ring-2 ring-negro' : 'hover:ring-2 hover:ring-negro/30',
-              )}
+              onClick={() => setLightbox(i)}
+              className="relative block h-full w-full"
+              aria-label={`Ampliar foto ${i + 1}`}
             >
               <Image
-                src={img.urlMiniatura ?? img.urlMediana ?? img.url}
-                alt=""
+                src={img.url}
+                alt={alt(img, nombre, color, i)}
                 fill
-                sizes="72px"
+                priority={i === 0}
+                fetchPriority={i === 0 ? 'high' : undefined}
+                sizes="100vw"
                 className="object-cover"
               />
             </button>
@@ -82,118 +83,68 @@ export function Galeria({ imagenes, nombre, color, etiquetas }: Props) {
         ))}
       </ul>
 
-      <div className="relative">
-        {/* Carrusel con swipe (celular) / imagen principal con zoom (desktop) */}
-        <ul
-          ref={scroller}
-          onScroll={onScroll}
-          className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto rounded-2xl bg-gris-claro lg:hidden"
-          aria-label={`Fotos de ${nombre}`}
-          aria-roledescription="carrusel"
-        >
-          {imagenes.map((img, i) => (
-            <li key={img.id ?? i} className="relative aspect-square w-full shrink-0 snap-center">
-              <button
-                type="button"
-                onClick={() => setLightbox(i)}
-                className="relative block h-full w-full"
-                aria-label={`Ampliar foto ${i + 1}`}
-              >
-                <Image
-                  src={img.url}
-                  alt={alt(img, nombre, color, i)}
-                  fill
-                  priority={i === 0}
-                  fetchPriority={i === 0 ? 'high' : undefined}
-                  sizes="100vw"
-                  className="object-cover"
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <div
-          className="group relative hidden aspect-square overflow-hidden rounded-2xl bg-gris-claro lg:block"
-          onMouseMove={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            setZoom({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 });
-          }}
-          onMouseLeave={() => setZoom(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightbox(actual)}
-            className="relative block h-full w-full cursor-zoom-in"
-            aria-label="Ampliar foto"
+      {/* Desktop: grilla de dos columnas con todas las fotos */}
+      <ul
+        className="hidden grid-cols-2 gap-1 lg:grid"
+        aria-label={`Fotos de ${nombre}`}
+      >
+        {imagenes.map((img, i) => (
+          <li
+            key={img.id ?? i}
+            className={cn(
+              'group relative aspect-square overflow-hidden bg-gris-claro',
+              // Con cantidad impar, la última foto ocupa el ancho completo (como una toma de campaña).
+              imagenes.length % 2 === 1 && i === imagenes.length - 1 && 'col-span-2 aspect-[2/1]',
+            )}
           >
-            <Image
-              key={principal.id ?? actual}
-              src={principal.url}
-              alt={alt(principal, nombre, color, actual)}
-              fill
-              priority
-              fetchPriority="high"
-              sizes="(min-width: 1024px) 45vw, 100vw"
-              className="object-cover transition-transform duration-150"
-              style={
-                zoom
-                  ? { transform: 'scale(2)', transformOrigin: `${zoom.x}% ${zoom.y}%` }
-                  : undefined
-              }
-            />
-          </button>
-          <span className="pointer-events-none absolute bottom-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-blanco/90 text-negro opacity-0 transition-opacity group-hover:opacity-100">
-            <IconZoom size={18} />
-          </span>
-          {imagenes.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={() => irA((actual - 1 + imagenes.length) % imagenes.length)}
-                aria-label="Foto anterior"
-                className="absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-blanco/90 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              >
-                <IconChevronLeft />
-              </button>
-              <button
-                type="button"
-                onClick={() => irA((actual + 1) % imagenes.length)}
-                aria-label="Foto siguiente"
-                className="absolute right-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-blanco/90 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              >
-                <IconChevronRight />
-              </button>
-            </>
-          )}
+            <button
+              type="button"
+              onClick={() => setLightbox(i)}
+              className="relative block h-full w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-noche"
+              aria-label={`Ampliar foto ${i + 1}`}
+            >
+              <Image
+                src={img.url}
+                alt={alt(img, nombre, color, i)}
+                fill
+                priority={i < 2}
+                fetchPriority={i === 0 ? 'high' : undefined}
+                sizes="(min-width: 1024px) 33vw, 100vw"
+                className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              />
+            </button>
+            <span className="pointer-events-none absolute bottom-3 right-3 inline-flex h-9 items-center gap-1.5 bg-blanco/90 px-3 text-[11px] font-semibold uppercase tracking-wider text-negro opacity-0 transition-opacity group-hover:opacity-100">
+              <IconZoom size={16} /> Ampliar
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {etiquetas && <div className="absolute left-3 top-3 flex gap-1.5">{etiquetas}</div>}
+
+      {/* Puntos (celular) */}
+      {imagenes.length > 1 && (
+        <div className="mt-3 flex justify-center gap-1.5 lg:hidden" role="tablist" aria-label="Fotos">
+          {imagenes.map((img, i) => (
+            <button
+              key={img.id ?? i}
+              type="button"
+              role="tab"
+              aria-selected={i === actual}
+              aria-label={`Foto ${i + 1}`}
+              onClick={() => irA(i)}
+              className="flex h-8 w-6 items-center justify-center"
+            >
+              <span
+                className={cn(
+                  'block h-1.5 transition-all',
+                  i === actual ? 'w-6 bg-negro' : 'w-2 bg-negro/25',
+                )}
+              />
+            </button>
+          ))}
         </div>
-
-        {etiquetas && <div className="absolute left-3 top-3 flex gap-1.5">{etiquetas}</div>}
-
-        {/* Puntos (celular) */}
-        {imagenes.length > 1 && (
-          <div className="mt-3 flex justify-center gap-1.5 lg:hidden" role="tablist" aria-label="Fotos">
-            {imagenes.map((img, i) => (
-              <button
-                key={img.id ?? i}
-                type="button"
-                role="tab"
-                aria-selected={i === actual}
-                aria-label={`Foto ${i + 1}`}
-                onClick={() => irA(i)}
-                className="flex h-8 w-6 items-center justify-center"
-              >
-                <span
-                  className={cn(
-                    'block h-2 rounded-full transition-all',
-                    i === actual ? 'w-5 bg-negro' : 'w-2 bg-negro/25',
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {lightbox !== null && (
         <Lightbox
@@ -353,7 +304,7 @@ function Lightbox({
                 setI(k);
               }}
               className={cn(
-                'relative h-14 w-14 overflow-hidden rounded-lg bg-blanco/10',
+                'relative h-14 w-14 overflow-hidden bg-blanco/10',
                 k === i && 'ring-2 ring-blanco',
               )}
             >

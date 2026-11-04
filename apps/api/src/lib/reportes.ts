@@ -52,7 +52,7 @@ async function totalesEntre(desdeTs: Date, hastaTs: Date): Promise<Totales> {
     SELECT COALESCE(SUM(p.total), 0)::float8 AS ventas, COUNT(*)::int AS pedidos
     FROM pedidos p
     WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-      AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}`;
+      AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}`;
   return { ventas: r?.ventas ?? 0, pedidos: r?.pedidos ?? 0 };
 }
 
@@ -81,23 +81,23 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
       prisma.carrito.count({ where: { updatedAt: { gte: desdeTs, lte: hastaTs } } }),
       prisma.pedido.count({ where: { createdAt: { gte: desdeTs, lte: hastaTs } } }),
       prisma.$queryRaw<Array<{ fecha: string; ventas: number; pedidos: number }>>`
-        SELECT to_char(p.pagado_en AT TIME ZONE ${TZ}, 'YYYY-MM-DD') AS fecha,
+        SELECT to_char((p.pagado_en AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}, 'YYYY-MM-DD') AS fecha,
                COALESCE(SUM(p.total), 0)::float8 AS ventas, COUNT(*)::int AS pedidos
         FROM pedidos p
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY 1 ORDER BY 1`,
       prisma.$queryRaw<Array<{ estado: string; cantidad: number; ventas: number }>>`
         SELECT p.estado::text AS estado, COUNT(*)::int AS cantidad, COALESCE(SUM(p.total), 0)::float8 AS ventas
         FROM pedidos p
-        WHERE p.created_at BETWEEN ${desdeTs} AND ${hastaTs}
+        WHERE (p.created_at AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY 1 ORDER BY 2 DESC`,
       prisma.$queryRaw<Fila[]>`
         SELECT i.linea::text AS clave, i.linea::text AS nombre, COUNT(DISTINCT p.id)::int AS pedidos,
                COALESCE(SUM(i.cantidad), 0)::int AS unidades, COALESCE(SUM(i.total), 0)::float8 AS ventas
         FROM pedido_items i JOIN pedidos p ON p.id = i.pedido_id
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY 1 ORDER BY ventas DESC`,
       prisma.$queryRaw<Fila[]>`
         SELECT o.id AS clave, COALESCE(o.nombre, 'Sin asignar') AS nombre, COUNT(*)::int AS pedidos,
@@ -105,7 +105,7 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
                COALESCE(SUM(p.total), 0)::float8 AS ventas
         FROM pedidos p LEFT JOIN opticas o ON o.id = p.optica_id
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY o.id, o.nombre ORDER BY ventas DESC`,
       prisma.$queryRaw<Fila[]>`
         SELECT c.id AS clave, COALESCE(c.nombre, 'Sin colección') AS nombre, COUNT(DISTINCT p.id)::int AS pedidos,
@@ -115,7 +115,7 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
         LEFT JOIN productos pr ON pr.id = i.producto_id
         LEFT JOIN colecciones c ON c.id = pr.coleccion_id
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY c.id, c.nombre ORDER BY ventas DESC`,
       prisma.$queryRaw<Fila[]>`
         SELECT cu.codigo AS clave, cr.nombre AS nombre, COUNT(*)::int AS pedidos,
@@ -126,7 +126,7 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
         JOIN cupones cu ON cu.id = u.cupon_id
         JOIN creadores cr ON cr.id = cu.creador_id
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY cu.codigo, cr.nombre ORDER BY ventas DESC`,
       prisma.$queryRaw<Array<{ productoId: string | null; nombre: string; slug: string | null; unidades: number; ventas: number }>>`
         SELECT i.producto_id AS "productoId", MAX(i.nombre) AS nombre, MAX(pr.slug) AS slug,
@@ -135,7 +135,7 @@ export async function generarReporte(periodo: Periodo, ahora = new Date()) {
         JOIN pedidos p ON p.id = i.pedido_id
         LEFT JOIN productos pr ON pr.id = i.producto_id
         WHERE p.estado_pago = 'APROBADO' AND p.estado NOT IN ('CANCELADO', 'DEVUELTO')
-          AND p.pagado_en BETWEEN ${desdeTs} AND ${hastaTs}
+          AND (p.pagado_en AT TIME ZONE 'UTC') BETWEEN ${desdeTs} AND ${hastaTs}
         GROUP BY i.producto_id ORDER BY unidades DESC, ventas DESC LIMIT 10`,
     ]);
 
