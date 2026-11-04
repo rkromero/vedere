@@ -20,6 +20,7 @@ import creadoresRoutes from './creadores.js';
 import configRoutes from './config.js';
 import mayoristaAdminRoutes from './mayorista.js';
 import solicitudesRoutes from './solicitudes.js';
+import cuentasRoutes from './cuentas.js';
 import liquidacionesRoutes from './liquidaciones.js';
 import reportesRoutes from './reportes.js';
 import plantillasRoutes from './plantillas.js';
@@ -47,6 +48,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     await staff.register(promocionesRoutes, { prefix: '/promociones' });
     await staff.register(creadoresRoutes, { prefix: '/creadores' });
     await staff.register(mayoristaAdminRoutes, { prefix: '/mayorista' });
+    await staff.register(cuentasRoutes, { prefix: '/cuentas' });
     await staff.register(configRoutes); // GET /config-tienda (staff), PUT sólo ADMIN
     await staff.register(reportesRoutes, { prefix: '/reportes' });
     await staff.register(plantillasRoutes, { prefix: '/plantillas-email' });

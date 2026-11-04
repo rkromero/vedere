@@ -18,7 +18,8 @@ const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boo
   { href: '/admin/pedidos', label: 'Pedidos' },
   { href: '/admin/solicitudes', label: 'Cambios y devoluciones' },
   { href: '/admin/opticas', label: 'Ópticas' },
-  { href: '/admin/mayorista', label: 'Pedidos mayoristas' },
+  { href: '/admin/pedidos-mayoristas', label: 'Pedidos mayoristas' },
+  { href: '/admin/cuentas', label: 'Cuentas corrientes' },
   { href: '/admin/liquidaciones', label: 'Liquidaciones' },
   { href: '/admin/promos', label: 'Barra de promo' },
   { href: '/admin/cupones', label: 'Cupones' },
@@ -39,7 +40,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
 
   const items = NAV.filter((i) => !i.adminOnly || user.rol === 'ADMIN');
   const isActive = (i: (typeof NAV)[number]) =>
-    i.exact ? pathname === i.href : pathname.startsWith(i.href);
+    i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(i.href + '/');
 
   async function logout() {
     try {
@@ -73,7 +74,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   return (
     <div className="flex min-h-screen bg-gris-claro/40">
       {/* Sidebar desktop */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-negro/10 bg-blanco lg:flex">
+      <aside className="hidden w-60 print:!hidden shrink-0 flex-col border-r border-negro/10 bg-blanco lg:flex">
         <div className="px-6 py-5">
           <Link href="/admin" className="font-campaign text-2xl">
             Vedere
@@ -140,7 +141,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center gap-3 border-b border-negro/10 bg-blanco px-4 lg:hidden">
+        <header className="print:hidden flex h-14 items-center gap-3 border-b border-negro/10 bg-blanco px-4 lg:hidden">
           <button
             type="button"
             onClick={() => setOpen(true)}

@@ -411,12 +411,15 @@ model Optica {
   createdById       String?              @map("created_by_id")
   updatedById       String?              @map("updated_by_id")
 
-  pedidos           Pedido[]
-  usuarios          User[]
-  eventos           PedidoEvento[]
-  turnos            Turno[]
-  solicitudes       SolicitudOptica[]
-  pedidosMayoristas PedidoMayorista[]
+  pedidos                Pedido[]
+  usuarios               User[]
+  eventos                PedidoEvento[]
+  turnos                 Turno[]
+  solicitudes            SolicitudOptica[]
+  pedidosMayoristas      PedidoMayorista[]
+  cuentaCorriente        CuentaCorriente?
+  pagosInformados        PagoInformado[]
+  devolucionesMayoristas DevolucionMayorista[]
 
   @@index([activa, provincia])
   @@index([codigoPostal])
@@ -1259,7 +1262,11 @@ enum EntregaMayorista {
 /// PENDIENTE_APROBACION -> APROBADO (reserva stock) -> DESPACHADO (descuenta stock) -> ENTREGADO; CANCELADO es terminal.
 enum EstadoPedidoMayorista {
   PENDIENTE_APROBACION
+  /// B2B 3: supera el crédito disponible o tiene deuda vencida: decide el admin.
+  EN_REVISION
   APROBADO
+  EN_PREPARACION
+  LISTO_PARA_RETIRO
   DESPACHADO
   ENTREGADO
   CANCELADO
@@ -1267,18 +1274,20 @@ enum EstadoPedidoMayorista {
 
 /// Configuración del canal mayorista (una sola fila, id "default").
 model ConfigMayorista {
-  id               String              @id @default("default")
-  ivaPct           Decimal             @default(21) @map("iva_pct") @db.Decimal(5, 2)
-  minimoTipo       TipoMinimoMayorista @default(NINGUNO) @map("minimo_tipo")
-  minimoValor      Decimal             @default(0) @map("minimo_valor") @db.Decimal(12, 2)
-  envioHabilitado  Boolean             @default(true) @map("envio_habilitado")
-  envioModo        EnvioMayoristaModo  @default(A_CARGO_OPTICA) @map("envio_modo")
-  envioCosto       Decimal             @default(0) @map("envio_costo") @db.Decimal(12, 2)
-  retiroHabilitado Boolean             @default(true) @map("retiro_habilitado")
-  retiroDireccion  String?             @map("retiro_direccion")
-  retiroHorario    String?             @map("retiro_horario")
-  updatedAt        DateTime            @updatedAt @map("updated_at")
-  updatedById      String?             @map("updated_by_id")
+  id                    String              @id @default("default")
+  ivaPct                Decimal             @default(21) @map("iva_pct") @db.Decimal(5, 2)
+  minimoTipo            TipoMinimoMayorista @default(NINGUNO) @map("minimo_tipo")
+  minimoValor           Decimal             @default(0) @map("minimo_valor") @db.Decimal(12, 2)
+  envioHabilitado       Boolean             @default(true) @map("envio_habilitado")
+  envioModo             EnvioMayoristaModo  @default(A_CARGO_OPTICA) @map("envio_modo")
+  envioCosto            Decimal             @default(0) @map("envio_costo") @db.Decimal(12, 2)
+  retiroHabilitado      Boolean             @default(true) @map("retiro_habilitado")
+  retiroDireccion       String?             @map("retiro_direccion")
+  retiroHorario         String?             @map("retiro_horario")
+  /// B2B 3: días de deuda vencida tolerados antes de mandar un pedido a revisión.
+  diasToleranciaVencida Int                 @default(7) @map("dias_tolerancia_vencida")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  updatedById           String?             @map("updated_by_id")
 
   @@map("config_mayorista")
 }
@@ -1297,46 +1306,64 @@ model CarritoMayorista {
 
 /// Pedido mayorista: número VM-10001 (secuencia pedidos_mayoristas_numero_seq), precios congelados sin IVA.
 model PedidoMayorista {
-  id                String                @id @default(cuid())
-  numero            String                @unique
-  estado            EstadoPedidoMayorista @default(PENDIENTE_APROBACION)
-  opticaId          String                @map("optica_id")
-  optica            Optica                @relation(fields: [opticaId], references: [id], onDelete: Restrict)
-  usuarioId         String?               @map("usuario_id")
-  usuarioNombre     String                @map("usuario_nombre")
-  usuarioEmail      String                @map("usuario_email")
-  entrega           EntregaMayorista
+  id                    String                @id @default(cuid())
+  numero                String                @unique
+  estado                EstadoPedidoMayorista @default(PENDIENTE_APROBACION)
+  opticaId              String                @map("optica_id")
+  optica                Optica                @relation(fields: [opticaId], references: [id], onDelete: Restrict)
+  usuarioId             String?               @map("usuario_id")
+  usuarioNombre         String                @map("usuario_nombre")
+  usuarioEmail          String                @map("usuario_email")
+  entrega               EntregaMayorista
   /// Snapshot de la dirección de envío o del depósito de retiro.
-  direccionEntrega  String                @map("direccion_entrega")
-  envioACargoOptica Boolean               @default(false) @map("envio_a_cargo_optica")
-  unidades          Int
+  direccionEntrega      String                @map("direccion_entrega")
+  envioACargoOptica     Boolean               @default(false) @map("envio_a_cargo_optica")
+  unidades              Int
   /// Suma a precio mayorista de lista (sin IVA), antes del descuento.
-  subtotalLista     Decimal               @map("subtotal_lista") @db.Decimal(12, 2)
-  descuentoPct      Decimal               @default(0) @map("descuento_pct") @db.Decimal(5, 2)
-  descuento         Decimal               @default(0) @db.Decimal(12, 2)
+  subtotalLista         Decimal               @map("subtotal_lista") @db.Decimal(12, 2)
+  descuentoPct          Decimal               @default(0) @map("descuento_pct") @db.Decimal(5, 2)
+  descuento             Decimal               @default(0) @db.Decimal(12, 2)
   /// Neto sin IVA (después del descuento).
-  subtotal          Decimal               @db.Decimal(12, 2)
-  envio             Decimal               @default(0) @db.Decimal(12, 2)
-  ivaPct            Decimal               @map("iva_pct") @db.Decimal(5, 2)
-  iva               Decimal               @db.Decimal(12, 2)
-  total             Decimal               @db.Decimal(12, 2)
-  notas             String?
-  notasInternas     String?               @map("notas_internas")
-  motivoCancelacion String?               @map("motivo_cancelacion")
+  subtotal              Decimal               @db.Decimal(12, 2)
+  envio                 Decimal               @default(0) @db.Decimal(12, 2)
+  ivaPct                Decimal               @map("iva_pct") @db.Decimal(5, 2)
+  iva                   Decimal               @db.Decimal(12, 2)
+  total                 Decimal               @db.Decimal(12, 2)
+  notas                 String?
+  notasInternas         String?               @map("notas_internas")
+  motivoCancelacion     String?               @map("motivo_cancelacion")
   /// Pedido del que se repitió (si vino de "Repetir pedido").
-  repetidoDeId      String?               @map("repetido_de_id")
-  aprobadoEn        DateTime?             @map("aprobado_en")
-  aprobadoPorId     String?               @map("aprobado_por_id")
-  despachadoEn      DateTime?             @map("despachado_en")
-  entregadoEn       DateTime?             @map("entregado_en")
-  canceladoEn       DateTime?             @map("cancelado_en")
-  numeroSeguimiento String?               @map("numero_seguimiento")
-  stockDescontado   Boolean               @default(false) @map("stock_descontado")
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
+  repetidoDeId          String?               @map("repetido_de_id")
+  aprobadoEn            DateTime?             @map("aprobado_en")
+  aprobadoPorId         String?               @map("aprobado_por_id")
+  despachadoEn          DateTime?             @map("despachado_en")
+  entregadoEn           DateTime?             @map("entregado_en")
+  canceladoEn           DateTime?             @map("cancelado_en")
+  numeroSeguimiento     String?               @map("numero_seguimiento")
+  stockDescontado       Boolean               @default(false) @map("stock_descontado")
+  // B2B 3: cuenta corriente y gestión.
+  /// Plazo de pago vigente al confirmar la compra (snapshot de la cuenta corriente).
+  plazoPagoDias         Int?                  @map("plazo_pago_dias")
+  /// Vencimiento del débito: fecha de despacho (o de listo para retirar) + plazo.
+  venceEn               DateTime?             @map("vence_en")
+  motivoRevision        String?               @map("motivo_revision")
+  enPreparacionEn       DateTime?             @map("en_preparacion_en")
+  listoParaRetiroEn     DateTime?             @map("listo_para_retiro_en")
+  transporte            String?
+  linkSeguimiento       String?               @map("link_seguimiento")
+  numeroRemito          Int?                  @unique @map("numero_remito")
+  numeroFactura         String?               @map("numero_factura")
+  recordatorioPrevioEn  DateTime?             @map("recordatorio_previo_en")
+  recordatorioVencidoEn DateTime?             @map("recordatorio_vencido_en")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  items    PedidoMayoristaItem[]
-  reservas ReservaStock[]
+  items        PedidoMayoristaItem[]
+  reservas     ReservaStock[]
+  eventos      EventoPedidoMayorista[]
+  imputaciones ImputacionPago[]
+  movimientos  MovimientoCuenta[]
+  devoluciones DevolucionMayorista[]
 
   @@index([opticaId, createdAt])
   @@index([estado, createdAt])
@@ -1364,7 +1391,202 @@ model PedidoMayoristaItem {
   cantidad        Int
   total           Decimal         @db.Decimal(12, 2)
 
+  devolucionItems DevolucionMayoristaItem[]
+
   @@index([pedidoId])
   @@index([varianteId])
   @@map("pedido_mayorista_items")
+}
+
+// ------------------------------------------------------------------
+// B2B 3: cuenta corriente de las ópticas
+// ------------------------------------------------------------------
+
+/// Límite de crédito y plazo de pago por óptica (en B2B 4 los define el nivel). El saldo NO se guarda:
+/// siempre es la suma de los movimientos.
+model CuentaCorriente {
+  id            String   @id @default(cuid())
+  opticaId      String   @unique @map("optica_id")
+  optica        Optica   @relation(fields: [opticaId], references: [id], onDelete: Cascade)
+  limiteCredito Decimal  @default(0) @map("limite_credito") @db.Decimal(12, 2)
+  plazoPagoDias Int      @default(30) @map("plazo_pago_dias")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  movimientos MovimientoCuenta[]
+
+  @@map("cuentas_corrientes")
+}
+
+enum TipoMovimientoCuenta {
+  DEBITO_PEDIDO
+  PAGO
+  NOTA_CREDITO
+  CREDITO_LIQUIDACION
+  AJUSTE
+}
+
+enum MedioPagoCuenta {
+  TRANSFERENCIA
+  ECHEQ
+  EFECTIVO
+}
+
+/// importe con signo: positivo aumenta la deuda de la óptica (débito), negativo la reduce (crédito).
+model MovimientoCuenta {
+  id                String               @id @default(cuid())
+  cuentaId          String               @map("cuenta_id")
+  cuenta            CuentaCorriente      @relation(fields: [cuentaId], references: [id], onDelete: Restrict)
+  tipo              TipoMovimientoCuenta
+  importe           Decimal              @db.Decimal(12, 2)
+  fecha             DateTime             @default(now())
+  descripcion       String
+  /// Obligatorio en AJUSTE.
+  motivo            String?
+  medio             MedioPagoCuenta?
+  referencia        String?
+  comprobanteUrl    String?              @map("comprobante_url")
+  pedidoMayoristaId String?              @map("pedido_mayorista_id")
+  pedidoMayorista   PedidoMayorista?     @relation(fields: [pedidoMayoristaId], references: [id], onDelete: Restrict)
+  devolucionId      String?              @map("devolucion_id")
+  liquidacionMes    String?              @map("liquidacion_mes")
+  /// Sólo en DEBITO_PEDIDO.
+  vencimiento       DateTime?
+  /// Evita duplicados (débito por pedido, crédito por liquidación, NC por devolución).
+  clave             String?              @unique
+  creadoPorId       String?              @map("creado_por_id")
+  creadoPorNombre   String?              @map("creado_por_nombre")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  imputaciones  ImputacionPago[]
+  pagoInformado PagoInformado?
+
+  @@index([cuentaId, fecha])
+  @@index([tipo, fecha])
+  @@map("movimientos_cuenta")
+}
+
+/// Parte de un crédito (pago, nota de crédito, liquidación o ajuste) aplicada a un pedido despachado.
+model ImputacionPago {
+  id           String           @id @default(cuid())
+  movimientoId String           @map("movimiento_id")
+  movimiento   MovimientoCuenta @relation(fields: [movimientoId], references: [id], onDelete: Cascade)
+  pedidoId     String           @map("pedido_id")
+  pedido       PedidoMayorista  @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  monto        Decimal          @db.Decimal(12, 2)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([movimientoId])
+  @@index([pedidoId])
+  @@map("imputaciones_pago")
+}
+
+enum EstadoPagoInformado {
+  PENDIENTE
+  VALIDADO
+  RECHAZADO
+}
+
+/// Pago que informa la óptica con su comprobante; no mueve la cuenta hasta que el admin lo valida.
+model PagoInformado {
+  id                String              @id @default(cuid())
+  opticaId          String              @map("optica_id")
+  optica            Optica              @relation(fields: [opticaId], references: [id], onDelete: Restrict)
+  usuarioId         String?             @map("usuario_id")
+  usuarioNombre     String              @map("usuario_nombre")
+  importe           Decimal             @db.Decimal(12, 2)
+  medio             MedioPagoCuenta
+  fechaPago         DateTime            @map("fecha_pago")
+  referencia        String?
+  comprobanteUrl    String              @map("comprobante_url")
+  comprobanteNombre String?             @map("comprobante_nombre")
+  notas             String?
+  /// Pedidos que la óptica dice pagar (sugerencia para la imputación).
+  pedidoIds         String[]            @map("pedido_ids")
+  estado            EstadoPagoInformado @default(PENDIENTE)
+  motivoRechazo     String?             @map("motivo_rechazo")
+  movimientoId      String?             @unique @map("movimiento_id")
+  movimiento        MovimientoCuenta?   @relation(fields: [movimientoId], references: [id], onDelete: SetNull)
+  revisadoPorId     String?             @map("revisado_por_id")
+  revisadoEn        DateTime?           @map("revisado_en")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  @@index([estado, createdAt])
+  @@index([opticaId, createdAt])
+  @@map("pagos_informados")
+}
+
+/// Línea de tiempo del pedido mayorista (cambios de estado, notas, factura, pagos, devoluciones).
+model EventoPedidoMayorista {
+  id            String                 @id @default(cuid())
+  pedidoId      String                 @map("pedido_id")
+  pedido        PedidoMayorista        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  tipo          String
+  estado        EstadoPedidoMayorista?
+  nota          String?
+  /// Sólo lo ve el staff.
+  interno       Boolean                @default(false)
+  usuarioId     String?                @map("usuario_id")
+  usuarioNombre String?                @map("usuario_nombre")
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  @@index([pedidoId, createdAt])
+  @@map("eventos_pedido_mayorista")
+}
+
+enum EstadoDevolucionMayorista {
+  SOLICITADA
+  APROBADA
+  RECHAZADA
+}
+
+model DevolucionMayorista {
+  id            String                    @id @default(cuid())
+  pedidoId      String                    @map("pedido_id")
+  pedido        PedidoMayorista           @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  opticaId      String                    @map("optica_id")
+  optica        Optica                    @relation(fields: [opticaId], references: [id], onDelete: Restrict)
+  estado        EstadoDevolucionMayorista @default(SOLICITADA)
+  motivo        String
+  fotos         String[]
+  usuarioId     String?                   @map("usuario_id")
+  usuarioNombre String                    @map("usuario_nombre")
+  /// Importe de la nota de crédito (con IVA).
+  importe       Decimal                   @db.Decimal(12, 2)
+  motivoRechazo String?                   @map("motivo_rechazo")
+  resueltoPorId String?                   @map("resuelto_por_id")
+  resueltoEn    DateTime?                 @map("resuelto_en")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+
+  items DevolucionMayoristaItem[]
+
+  @@index([estado, createdAt])
+  @@index([pedidoId])
+  @@map("devoluciones_mayoristas")
+}
+
+model DevolucionMayoristaItem {
+  id           String              @id @default(cuid())
+  devolucionId String              @map("devolucion_id")
+  devolucion   DevolucionMayorista @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
+  pedidoItemId String              @map("pedido_item_id")
+  pedidoItem   PedidoMayoristaItem @relation(fields: [pedidoItemId], references: [id], onDelete: Restrict)
+  cantidad     Int
+  /// Neto sin IVA (precio unitario congelado × cantidad).
+  total        Decimal             @db.Decimal(12, 2)
+
+  @@index([devolucionId])
+  @@map("devolucion_mayorista_items")
+}
+
+/// Cierre de la liquidación mensual de pedidos web: acredita la comisión en la cuenta de cada óptica.
+model LiquidacionCierre {
+  id              String   @id @default(cuid())
+  mes             String   @unique
+  total           Decimal  @db.Decimal(12, 2)
+  cantidadOpticas Int      @map("cantidad_opticas")
+  cerradoPorId    String?  @map("cerrado_por_id")
+  cerradoEn       DateTime @default(now()) @map("cerrado_en")
+
+  @@map("liquidaciones_cierre")
 }

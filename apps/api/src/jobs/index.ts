@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Env } from '../env.js';
 import { jobCarritoAbandonado } from './carrito-abandonado.js';
 import { jobRivedere } from './rivedere.js';
+import { jobVencimientosMayoristas } from './vencimientos-mayoristas.js';
 import { jobVolvioStock } from './volvio-stock.js';
 
 export type Job = (env: Env, ahora?: Date) => Promise<number>;
@@ -14,6 +15,8 @@ export const JOBS: Record<string, Job> = {
   'carrito-abandonado': jobCarritoAbandonado,
   'volvio-stock': jobVolvioStock,
   rivedere: jobRivedere,
+  // B2B 3: recordatorios de vencimiento de la cuenta corriente de las ópticas.
+  'vencimientos-mayoristas': jobVencimientosMayoristas,
 };
 
 export const NOMBRES_JOBS = Object.keys(JOBS);
@@ -42,7 +45,7 @@ export function iniciarJobs(app: FastifyInstance): () => void {
     timers.push(t);
   };
 
-  agendar(['carrito-abandonado', 'volvio-stock'], env.CARRITO_ABANDONADO_INTERVALO_MIN * 60_000);
+  agendar(['carrito-abandonado', 'volvio-stock', 'vencimientos-mayoristas'], env.CARRITO_ABANDONADO_INTERVALO_MIN * 60_000);
   agendar(['rivedere'], env.RIVEDERE_INTERVALO_HORAS * 3600_000);
 
   return () => timers.forEach((t) => clearInterval(t));

@@ -13,6 +13,7 @@ const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: '/optica/catalogo', label: 'Catálogo mayorista' },
   { href: '/optica/carrito', label: 'Carrito mayorista' },
   { href: '/optica/compras', label: 'Mis compras' },
+  { href: '/optica/cuenta', label: 'Cuenta corriente' },
   { href: '/optica/pedidos', label: 'Pedidos de clientes' },
   { href: '/optica/turnos', label: 'Agenda de turnos' },
   { href: '/optica/liquidacion', label: 'Liquidación' },
@@ -23,7 +24,7 @@ export function OpticaShell({ user, children }: { user: SessionUser; children: R
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const isActive = (i: (typeof NAV)[number]) => (i.exact ? pathname === i.href : pathname.startsWith(i.href));
+  const isActive = (i: (typeof NAV)[number]) => (i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(i.href + '/'));
 
   async function logout() {
     try {

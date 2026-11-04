@@ -45,6 +45,8 @@ interface FormState {
   descuentoPct: string;
   minimoTipo: string;
   minimoValor: string;
+  limiteCredito: string;
+  plazoPagoDias: string;
   direccion: string;
   localidad: string;
   provincia: string;
@@ -71,6 +73,8 @@ const vacio: FormState = {
   descuentoPct: '0',
   minimoTipo: '',
   minimoValor: '',
+  limiteCredito: '0',
+  plazoPagoDias: '30',
   direccion: '',
   localidad: '',
   provincia: 'Buenos Aires',
@@ -125,6 +129,8 @@ export function OpticasTable({
             descuentoPct: String(o.descuentoPct ?? 0),
             minimoTipo: o.minimoTipo ?? '',
             minimoValor: o.minimoValor === null || o.minimoValor === undefined ? '' : String(o.minimoValor),
+            limiteCredito: String(o.limiteCredito ?? 0),
+            plazoPagoDias: String(o.plazoPagoDias ?? 30),
             direccion: o.direccion,
             localidad: o.localidad,
             provincia: o.provincia,
@@ -173,6 +179,8 @@ export function OpticasTable({
       descuentoPct: Number(form.descuentoPct.replace(',', '.')) || 0,
       minimoTipo: (form.minimoTipo || null) as OpticaAdmin['minimoTipo'],
       minimoValor: form.minimoTipo ? Number(form.minimoValor.replace(',', '.')) || 0 : null,
+      limiteCredito: Number(form.limiteCredito.replace(/\./g, '').replace(',', '.')) || 0,
+      plazoPagoDias: Number(form.plazoPagoDias) || 0,
       direccion: form.direccion.trim(),
       localidad: form.localidad.trim(),
       provincia: form.provincia.trim(),
@@ -449,6 +457,12 @@ export function OpticasTable({
                   />
                 )}
               </div>
+            </Field>
+            <Field label="Límite de crédito ($)" error={errors.limiteCredito} hint="Cuenta corriente: pedidos dentro del disponible se aprueban solos. 0 = todo pasa a revisión.">
+              <Input value={form.limiteCredito} onChange={f('limiteCredito')} inputMode="decimal" data-testid="optica-limite-credito" />
+            </Field>
+            <Field label="Plazo de pago (días)" error={errors.plazoPagoDias} hint="Desde el despacho. Cada pedido conserva el plazo vigente al comprar.">
+              <Input type="number" min={0} max={180} value={form.plazoPagoDias} onChange={f('plazoPagoDias')} data-testid="optica-plazo-pago" />
             </Field>
             <Field label="Dirección" required error={errors.direccion}>
               <Input

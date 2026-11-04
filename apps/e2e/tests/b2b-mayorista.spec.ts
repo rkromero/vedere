@@ -4,6 +4,8 @@ import { emailUnico, loginAdmin } from './helpers';
 
 // B2B 2: una óptica arma un pedido mayorista desde el catálogo de su portal (no llega a la compra mínima,
 // completa y confirma), lo repite desde Mis compras, otra óptica no lo puede ver (403) y el admin lo aprueba.
+// B2B 3: sin crédito asignado el pedido queda en revisión; al salir del depósito se debita en la cuenta
+// corriente, la óptica informa un pago con comprobante y el admin lo valida.
 // El spec crea sus propios usuarios de óptica y le pone precio mayorista a un producto publicado.
 
 const PASSWORD = 'MayoristaE2E2026';
@@ -96,7 +98,7 @@ test.describe.serial('Pedido mayorista de una óptica socia', () => {
     await page.getByTestId('confirmar-pedido').click();
     await page.waitForURL(/\/optica\/compras\/[^/?]+\?nuevo=1/);
     await expect(page.getByTestId('pedido-confirmado')).toContainText(/VM-\d+/);
-    await expect(page.getByText('Pendiente de aprobación').first()).toBeVisible();
+    await expect(page.getByText('En revisión').first()).toBeVisible();
     compraUrl = new URL(page.url()).pathname;
     compraId = compraUrl.split('/').pop()!;
 
@@ -127,8 +129,57 @@ test.describe.serial('Pedido mayorista de una óptica socia', () => {
   test('el admin aprueba el pedido y se reserva el stock', async ({ page }) => {
     await loginAdmin(page);
     await page.goto(`/admin/mayorista/${compraId}`);
+    await page.waitForURL(new RegExp(`/admin/pedidos-mayoristas/${compraId}`));
     await page.getByTestId('mayorista-aprobar').click();
     await page.getByTestId('mayorista-confirmar').click();
     await expect(page.getByText('Aprobado', { exact: true }).first()).toBeVisible();
+  });
+
+  test('el admin lo deja listo para retirar: remito y débito en la cuenta corriente', async ({ page }) => {
+    await loginAdmin(page);
+    await page.goto(`/admin/pedidos-mayoristas/${compraId}`);
+    await page.getByTestId('mayorista-listo-para-retiro').click();
+    await page.getByTestId('mayorista-confirmar').click();
+    await expect(page.getByText('Listo para retirar', { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId('remito-pdf')).toBeVisible();
+    const remito = await page.request.get(`/api/admin/mayorista/pedidos/${compraId}/remito.pdf`);
+    expect(remito.headers()['content-type']).toContain('application/pdf');
+  });
+
+  test('la óptica ve su deuda, informa un pago con comprobante y el admin lo valida', async ({ page, browser }) => {
+    const referencia = `E2E-${Date.now()}`;
+    await loginOpticaComo(page, datos.emailA);
+    await page.goto('/optica/cuenta');
+    await expect(page.getByTestId('resumen-cuenta')).toBeVisible();
+    await expect(page.getByTestId('movimientos')).toContainText(/VM-\d+/);
+    const pdf = await page.request.get('/api/optica/cuenta/estado.pdf');
+    expect(pdf.headers()['content-type']).toContain('application/pdf');
+
+    await page.getByTestId('informar-pago').click();
+    await page.getByTestId('informar-importe').fill('10000');
+    await page.getByLabel('Referencia').fill(referencia);
+    await page.getByTestId('comprobante').setInputFiles({
+      name: 'transferencia.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 comprobante e2e'),
+    });
+    await expect(page.getByText('✓ transferencia.pdf')).toBeVisible();
+    await page.getByTestId('enviar-pago').click();
+    await expect(page.getByTestId('mis-pagos-informados')).toContainText('Pendiente de validar');
+
+    // La óptica no puede registrar movimientos por su cuenta.
+    const intento = await page.request.post(`/api/admin/cuentas/${'x'}/pagos`, { data: { importe: 1 } });
+    expect([401, 403]).toContain(intento.status());
+
+    const admin = await browser.newPage();
+    await loginAdmin(admin);
+    await admin.goto('/admin/cuentas');
+    const fila = admin.getByTestId('pagos-informados').locator('div', { hasText: referencia }).filter({ has: admin.getByTestId('validar-pago') }).last();
+    await fila.getByTestId('validar-pago').click();
+    await expect(admin.getByText(referencia)).toHaveCount(0);
+    await admin.close();
+
+    await page.goto(`/optica/compras/${compraId}`);
+    await expect(page.getByTestId('compra-pago')).toContainText('Pago parcial');
   });
 });

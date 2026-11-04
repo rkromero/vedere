@@ -2,13 +2,24 @@
 // server y client components.
 import type { BadgeTone } from './format';
 
-export type EstadoPedidoMayorista = 'PENDIENTE_APROBACION' | 'APROBADO' | 'DESPACHADO' | 'ENTREGADO' | 'CANCELADO';
+export type EstadoPedidoMayorista =
+  | 'PENDIENTE_APROBACION'
+  | 'EN_REVISION'
+  | 'APROBADO'
+  | 'EN_PREPARACION'
+  | 'LISTO_PARA_RETIRO'
+  | 'DESPACHADO'
+  | 'ENTREGADO'
+  | 'CANCELADO';
 export type EntregaMayorista = 'ENVIO_TRANSPORTE' | 'RETIRO_DEPOSITO';
 export type TipoMinimo = 'NINGUNO' | 'UNIDADES' | 'MONTO';
 
 export const ESTADO_MAYORISTA: Record<EstadoPedidoMayorista, { label: string; tone: BadgeTone }> = {
   PENDIENTE_APROBACION: { label: 'Pendiente de aprobación', tone: 'warn' },
+  EN_REVISION: { label: 'En revisión', tone: 'warn' },
   APROBADO: { label: 'Aprobado', tone: 'info' },
+  EN_PREPARACION: { label: 'En preparación', tone: 'info' },
+  LISTO_PARA_RETIRO: { label: 'Listo para retirar', tone: 'info' },
   DESPACHADO: { label: 'Despachado', tone: 'info' },
   ENTREGADO: { label: 'Entregado', tone: 'ok' },
   CANCELADO: { label: 'Cancelado', tone: 'danger' },
@@ -164,7 +175,20 @@ export interface PedidoMayorista {
   motivoCancelacion: string | null;
   repetidoDeId: string | null;
   numeroSeguimiento: string | null;
+  transporte: string | null;
+  linkSeguimiento: string | null;
+  numeroRemito: number | null;
+  numeroFactura: string | null;
+  motivoRevision: string | null;
+  plazoPagoDias: number | null;
+  venceEn: string | null;
+  pagado: number;
+  pendiente: number;
+  estadoPago: EstadoPago;
+  vencido: boolean;
   aprobadoEn: string | null;
+  enPreparacionEn: string | null;
+  listoParaRetiroEn: string | null;
   despachadoEn: string | null;
   entregadoEn: string | null;
   canceladoEn: string | null;
@@ -184,7 +208,162 @@ export interface PedidoMayorista {
     cantidad: number;
     total: number;
   }>;
+  eventos?: EventoPedidoMayorista[];
+  devoluciones?: DevolucionMayorista[];
 }
+
+export interface EventoPedidoMayorista {
+  id: string;
+  tipo: string;
+  estado: EstadoPedidoMayorista | null;
+  nota: string | null;
+  interno: boolean;
+  usuarioNombre: string | null;
+  createdAt: string;
+}
+
+export type EstadoDevolucion = 'SOLICITADA' | 'APROBADA' | 'RECHAZADA';
+
+export const ESTADO_DEVOLUCION: Record<EstadoDevolucion, { label: string; tone: BadgeTone }> = {
+  SOLICITADA: { label: 'Solicitada', tone: 'warn' },
+  APROBADA: { label: 'Aprobada', tone: 'ok' },
+  RECHAZADA: { label: 'Rechazada', tone: 'danger' },
+};
+
+export interface DevolucionMayorista {
+  id: string;
+  pedidoId: string;
+  estado: EstadoDevolucion;
+  motivo: string;
+  fotos: string[];
+  usuarioNombre: string;
+  importe: number;
+  motivoRechazo: string | null;
+  resueltoEn: string | null;
+  createdAt: string;
+  items: Array<{ id: string; pedidoItemId: string; nombre: string; sku: string; color: string; cantidad: number; total: number }>;
+  pedido?: { id: string; numero: string };
+  optica?: { id: string; nombre: string };
+}
+
+export type EstadoPago = 'NO_APLICA' | 'IMPAGO' | 'PARCIAL' | 'PAGADO';
+
+export const ESTADO_PAGO: Record<EstadoPago, { label: string; tone: BadgeTone }> = {
+  NO_APLICA: { label: '—', tone: 'neutral' },
+  IMPAGO: { label: 'Impago', tone: 'warn' },
+  PARCIAL: { label: 'Pago parcial', tone: 'info' },
+  PAGADO: { label: 'Pagado', tone: 'ok' },
+};
+
+// ---------- Cuenta corriente ----------
+
+export type MedioPago = 'TRANSFERENCIA' | 'ECHEQ' | 'EFECTIVO';
+export const MEDIO_PAGO: Record<MedioPago, string> = { TRANSFERENCIA: 'Transferencia', ECHEQ: 'E-cheq', EFECTIVO: 'Efectivo' };
+
+export type TipoMovimiento = 'DEBITO_PEDIDO' | 'PAGO' | 'NOTA_CREDITO' | 'CREDITO_LIQUIDACION' | 'AJUSTE';
+
+export interface PedidoConDeuda {
+  id: string;
+  numero: string;
+  total: number;
+  pagado: number;
+  pendiente: number;
+  venceEn: string;
+  diasVencido: number;
+}
+
+export interface ResumenCuenta {
+  opticaId: string;
+  limiteCredito: number;
+  plazoPagoDias: number;
+  saldo: number;
+  comprometido: number;
+  disponible: number;
+  deudaVencida: number;
+  deudaEnMora: number;
+  diasTolerancia: number;
+  proximosVencimientos: PedidoConDeuda[];
+  vencidos: PedidoConDeuda[];
+}
+
+export interface MovimientoCuenta {
+  id: string;
+  tipo: TipoMovimiento;
+  tipoLabel: string;
+  importe: number;
+  fecha: string;
+  descripcion: string;
+  motivo: string | null;
+  medio: MedioPago | null;
+  referencia: string | null;
+  comprobanteUrl: string | null;
+  vencimiento: string | null;
+  liquidacionMes: string | null;
+  pedido: { id: string; numero: string } | null;
+  imputaciones: Array<{ pedidoId: string; numero: string; monto: number }>;
+  creadoPorNombre: string | null;
+  saldo: number;
+}
+
+export interface MovimientosPaginados {
+  items: MovimientoCuenta[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  saldo: number;
+}
+
+export type EstadoPagoInformado = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO';
+export const ESTADO_PAGO_INFORMADO: Record<EstadoPagoInformado, { label: string; tone: BadgeTone }> = {
+  PENDIENTE: { label: 'Pendiente de validar', tone: 'warn' },
+  VALIDADO: { label: 'Validado', tone: 'ok' },
+  RECHAZADO: { label: 'Rechazado', tone: 'danger' },
+};
+
+export interface PagoInformado {
+  id: string;
+  optica: { id: string; nombre: string };
+  usuarioNombre: string;
+  importe: number;
+  medio: MedioPago;
+  fechaPago: string;
+  referencia: string | null;
+  comprobanteUrl: string;
+  comprobanteNombre: string | null;
+  notas: string | null;
+  pedidoIds: string[];
+  estado: EstadoPagoInformado;
+  motivoRechazo: string | null;
+  revisadoEn: string | null;
+  createdAt: string;
+  imputaciones: Array<{ pedidoId: string; numero: string; monto: number }>;
+}
+
+export interface CuentaListado {
+  optica: { id: string; nombre: string; activa: boolean };
+  limiteCredito: number;
+  plazoPagoDias: number;
+  saldo: number;
+  deudaVencida: number;
+}
+
+export interface DashboardMayorista {
+  mes: string;
+  ventasMes: number;
+  pedidosDespachadosMes: number;
+  pedidosMes: number;
+  montoPedidosMes: number;
+  enRevision: number;
+  porPreparar: number;
+  devolucionesPendientes: number;
+  pagosInformadosPendientes: number;
+  deudaTotal: number;
+  deudaVencida: number;
+  opticasConDeudaVencida: number;
+}
+
+export const numeroRemito = (n: number) => `R-${String(n).padStart(6, '0')}`;
 
 export interface ConfigMayorista {
   ivaPct: number;
@@ -196,6 +375,7 @@ export interface ConfigMayorista {
   retiroHabilitado: boolean;
   retiroDireccion: string | null;
   retiroHorario: string | null;
+  diasToleranciaVencida: number;
 }
 
 /** Texto para avisar ajustes de stock (catálogo, carrito y "repetir pedido"). */

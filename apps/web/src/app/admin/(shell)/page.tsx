@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Badge, Card, EmptyState, LinkBtn, PageHeader } from '@/components/admin/ui';
-import { estadoTone } from '@/lib/format';
+import { estadoTone, formatPrecio } from '@/lib/format';
+import type { DashboardMayorista } from '@/lib/mayorista';
 import { Table, Td, Th, Tr } from '@/components/admin/table';
 import { serverApiOrNull } from '@/lib/api-server';
 import { getSession } from '@/lib/session';
@@ -18,7 +19,7 @@ function Stat({
   hint,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   href: string;
   hint?: string;
 }) {
@@ -35,9 +36,10 @@ function Stat({
 }
 
 export default async function DashboardPage() {
-  const [user, data] = await Promise.all([
+  const [user, data, may] = await Promise.all([
     getSession(),
     serverApiOrNull<Dashboard>('/admin/dashboard'),
+    serverApiOrNull<DashboardMayorista>('/admin/mayorista/dashboard'),
   ]);
   const esAdmin = user?.rol === 'ADMIN';
   const bajoStock = data?.variantesBajoStock ?? [];
@@ -79,6 +81,29 @@ export default async function DashboardPage() {
               <Stat label="En curso" value={enCurso} href="/admin/pedidos" hint={`${data.opticasActivas} ópticas activas`} />
               <Stat label="Cambios y devoluciones" value={ped.solicitudesPendientes} href="/admin/solicitudes?estado=PENDIENTE" hint="Solicitudes pendientes" />
             </div>
+          )}
+          {may && (
+            <section className="mb-6" data-testid="dashboard-mayorista">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gris-medio">Canal mayorista</h2>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <Stat label="Ventas del mes" value={formatPrecio(may.ventasMes)} href="/admin/pedidos-mayoristas" hint={`${may.pedidosDespachadosMes} pedidos despachados`} />
+                <Stat label="Deuda total" value={formatPrecio(may.deudaTotal)} href="/admin/cuentas" hint="Saldo de las cuentas corrientes" />
+                <Stat
+                  label="Deuda vencida"
+                  value={formatPrecio(may.deudaVencida)}
+                  href="/admin/cuentas"
+                  hint={`${may.opticasConDeudaVencida} óptica${may.opticasConDeudaVencida === 1 ? '' : 's'}`}
+                />
+                <Stat label="En revisión" value={may.enRevision} href="/admin/pedidos-mayoristas?estado=EN_REVISION" hint="Exceden crédito o tienen deuda" />
+                <Stat label="Por preparar" value={may.porPreparar} href="/admin/pedidos-mayoristas?estado=APROBADO" hint="Aprobados y en preparación" />
+                <Stat
+                  label="A validar"
+                  value={may.pagosInformadosPendientes + may.devolucionesPendientes}
+                  href={may.pagosInformadosPendientes > 0 ? '/admin/cuentas' : '/admin/pedidos-mayoristas/devoluciones'}
+                  hint={`${may.pagosInformadosPendientes} pagos · ${may.devolucionesPendientes} devoluciones`}
+                />
+              </div>
+            </section>
           )}
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat

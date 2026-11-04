@@ -217,7 +217,8 @@ describe.skipIf(!hasDb)('B2B 2: catálogo y pedidos mayoristas (integración)', 
     // 4 Oro + 2 Plata = 6 × 100.000 lista; −10% = 540.000; envío 10.000; IVA 21% sobre 550.000 = 115.500.
     expect(p).toMatchObject({
       numero: 'VM-10001',
-      estado: 'PENDIENTE_APROBACION',
+      // B2B 3: la óptica no tiene crédito asignado (límite 0): queda en revisión para el admin.
+      estado: 'EN_REVISION',
       entrega: 'ENVIO_TRANSPORTE',
       unidades: 6,
       subtotalLista: 600000,
@@ -273,6 +274,7 @@ describe.skipIf(!hasDb)('B2B 2: catálogo y pedidos mayoristas (integración)', 
   });
 
   it('aprobar reserva stock (el mismo stock de la tienda) y despachar lo descuenta', async () => {
+    expect((await get(`/optica/mayorista/pedidos/${pedidoA}`, cookieA)).json().motivoRevision).toMatch(/crédito disponible/);
     const r = await post(`/admin/mayorista/pedidos/${pedidoA}/aprobar`, ctx.staffCookie);
     expect(r.statusCode).toBe(200);
     expect(r.json().estado).toBe('APROBADO');
@@ -287,8 +289,8 @@ describe.skipIf(!hasDb)('B2B 2: catálogo y pedidos mayoristas (integración)', 
     // No se aprueba dos veces.
     expect((await post(`/admin/mayorista/pedidos/${pedidoA}/aprobar`, ctx.staffCookie)).statusCode).toBe(409);
 
-    const d = await post(`/admin/mayorista/pedidos/${pedidoA}/despachar`, ctx.staffCookie, { numeroSeguimiento: 'TR-123' });
-    expect(d.json()).toMatchObject({ estado: 'DESPACHADO', numeroSeguimiento: 'TR-123' });
+    const d = await post(`/admin/mayorista/pedidos/${pedidoA}/despachar`, ctx.staffCookie, { transporte: 'Vía Cargo', numeroSeguimiento: 'TR-123' });
+    expect(d.json()).toMatchObject({ estado: 'DESPACHADO', transporte: 'Vía Cargo', numeroSeguimiento: 'TR-123' });
     const stocks = await ctx.prisma.variante.findMany({ where: { id: { in: [v1, v2] } }, orderBy: { orden: 'asc' } });
     expect(stocks.map((v) => v.stock)).toEqual([6, 2]);
     expect(await ctx.prisma.reservaStock.count({ where: { pedidoMayoristaId: pedidoA, estado: 'CONSUMIDA' } })).toBe(2);
@@ -325,7 +327,7 @@ describe.skipIf(!hasDb)('B2B 2: catálogo y pedidos mayoristas (integración)', 
   it('admin: listado con resumen, configuración y descuento editable de la óptica', async () => {
     const l = await get('/admin/mayorista/pedidos', ctx.staffCookie);
     expect(l.json().total).toBe(3);
-    expect(l.json().resumen).toMatchObject({ ENTREGADO: 1, CANCELADO: 1, PENDIENTE_APROBACION: 1 });
+    expect(l.json().resumen).toMatchObject({ ENTREGADO: 1, CANCELADO: 1, EN_REVISION: 1 });
     expect((await get('/admin/mayorista/pedidos', ctx.clienteCookie)).statusCode).toBe(403);
     expect((await get('/admin/mayorista/pedidos', cookieA)).statusCode).toBe(403);
 

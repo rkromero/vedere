@@ -1,10 +1,14 @@
 'use client';
 // Liquidación mensual de ópticas: resumen general por óptica y detalle de los pedidos entregados.
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { api, errorMessage } from '@/lib/api-client';
 import { formatFecha, formatPrecio } from '@/lib/format';
-import { formatMes } from '@/lib/pedidos';
+import { formatMes, mesActual } from '@/lib/pedidos';
 import type { Liquidacion, LiquidacionGeneral } from '@/lib/pedidos';
-import { Badge, Card, EmptyState, Input, PageHeader } from '@/components/admin/ui';
+import { Badge, Btn, Card, ConfirmDialog, EmptyState, Input, PageHeader } from '@/components/admin/ui';
+import { useToast } from '@/components/admin/toast';
 import { Table, Td, Th, Toolbar, Tr, useQueryParams } from '@/components/admin/table';
 
 export function MesSelector({ mes }: { mes: string }) {
@@ -59,7 +63,69 @@ export function LiquidacionDetalleTable({ liq }: { liq: Liquidacion }) {
   );
 }
 
-export function LiquidacionesView({ mes, general, detalle }: { mes: string; general: LiquidacionGeneral; detalle: Liquidacion | null }) {
+function CerrarLiquidacion({ mes, general, esAdmin }: { mes: string; general: LiquidacionGeneral; esAdmin: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [abierto, setAbierto] = useState(false);
+  const [cerrando, setCerrando] = useState(false);
+  const cierre = general.cierre;
+  if (cierre) {
+    return (
+      <p className="mb-6 rounded-lg bg-[#2f7d4f]/10 px-4 py-3 text-sm text-[#2f7d4f]" data-testid="liquidacion-cerrada">
+        Liquidación cerrada el {formatFecha(cierre.cerradoEn, true)}: se acreditaron {formatPrecio(cierre.total)} en la cuenta corriente de{' '}
+        {cierre.cantidadOpticas} óptica{cierre.cantidadOpticas === 1 ? '' : 's'}.
+      </p>
+    );
+  }
+  if (!esAdmin) return null;
+  const terminado = mes < mesActual();
+  async function cerrar() {
+    setCerrando(true);
+    try {
+      await api.post('/admin/liquidaciones/cerrar', { mes });
+      toast.ok('Liquidación cerrada: acreditamos las comisiones');
+      setAbierto(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setCerrando(false);
+    }
+  }
+  return (
+    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-negro/10 bg-blanco px-4 py-3 text-sm">
+      <span className="flex-1 text-gris-medio">
+        {terminado
+          ? 'Al cerrar el mes, la comisión de cada óptica se acredita en su cuenta corriente y descuenta su deuda mayorista.'
+          : 'El mes todavía no terminó: se puede cerrar a partir del día 1 del mes siguiente.'}
+      </span>
+      <Btn onClick={() => setAbierto(true)} disabled={!terminado || general.totales.comision <= 0} data-testid="cerrar-liquidacion">
+        Cerrar liquidación y acreditar comisiones
+      </Btn>
+      <ConfirmDialog
+        open={abierto}
+        onClose={() => setAbierto(false)}
+        onConfirm={cerrar}
+        loading={cerrando}
+        title={`Cerrar ${formatMes(mes)}`}
+        description={`Se acreditan ${formatPrecio(general.totales.comision)} en total. Un mes cerrado no se puede reabrir.`}
+        confirmLabel="Cerrar y acreditar"
+      />
+    </div>
+  );
+}
+
+export function LiquidacionesView({
+  mes,
+  general,
+  detalle,
+  esAdmin = false,
+}: {
+  mes: string;
+  general: LiquidacionGeneral;
+  detalle: Liquidacion | null;
+  esAdmin?: boolean;
+}) {
   const { set } = useQueryParams();
   return (
     <>
@@ -90,6 +156,7 @@ export function LiquidacionesView({ mes, general, detalle }: { mes: string; gene
           <p className="mt-2 text-3xl font-semibold tabular-nums">{formatPrecio(general.totales.comision)}</p>
         </div>
       </div>
+      <CerrarLiquidacion mes={mes} general={general} esAdmin={esAdmin} />
 
       {detalle ? (
         <Card title={`${detalle.optica?.nombre ?? 'Óptica'} · ${formatMes(detalle.mes)}`}>
