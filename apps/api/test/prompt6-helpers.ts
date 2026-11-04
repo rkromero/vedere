@@ -33,6 +33,7 @@ export async function limpiarBase(prisma: PrismaClient) {
   const lista = tablas.map((t) => `"${t.tablename}"`).join(', ');
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${lista} RESTART IDENTITY CASCADE`);
   await prisma.$executeRawUnsafe('ALTER SEQUENCE pedidos_numero_seq RESTART WITH 60001');
+  await prisma.$executeRawUnsafe('ALTER SEQUENCE pedidos_mayoristas_numero_seq RESTART WITH 10001');
 }
 
 export async function crearContexto(envExtra: Record<string, string> = {}): Promise<Contexto> {

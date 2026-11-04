@@ -1,6 +1,6 @@
 // Reservas de stock durante el pago: se descuentan de la disponibilidad mientras están ACTIVAS,
 // se CONSUMEN al aprobarse el pago (ahí se descuenta el stock real) y se LIBERAN si vencen o
-// el pedido se cancela.
+// el pedido se cancela. B2B 2: los pedidos mayoristas aprobados también reservan (pedidoMayoristaId).
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 
@@ -27,7 +27,8 @@ export async function reservadoPorVariante(
     where: {
       varianteId: { in: varianteIds },
       estado: 'ACTIVA',
-      ...(excluirPedidoId ? { pedidoId: { not: excluirPedidoId } } : {}),
+      // Las reservas mayoristas tienen pedidoId null: un `not` solo las dejaría afuera (NULL <> x es NULL).
+      ...(excluirPedidoId ? { OR: [{ pedidoId: null }, { pedidoId: { not: excluirPedidoId } }] } : {}),
     },
     _sum: { cantidad: true },
   });

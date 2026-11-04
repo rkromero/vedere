@@ -42,6 +42,9 @@ interface FormState {
   radioKm: string;
   comisionPct: string;
   capacidadDiaria: string;
+  descuentoPct: string;
+  minimoTipo: string;
+  minimoValor: string;
   direccion: string;
   localidad: string;
   provincia: string;
@@ -65,6 +68,9 @@ const vacio: FormState = {
   radioKm: '10',
   comisionPct: '10',
   capacidadDiaria: '20',
+  descuentoPct: '0',
+  minimoTipo: '',
+  minimoValor: '',
   direccion: '',
   localidad: '',
   provincia: 'Buenos Aires',
@@ -116,6 +122,9 @@ export function OpticasTable({
             radioKm: String(o.radioKm ?? 10),
             comisionPct: String(o.comisionPct ?? 0),
             capacidadDiaria: String(o.capacidadDiaria ?? 20),
+            descuentoPct: String(o.descuentoPct ?? 0),
+            minimoTipo: o.minimoTipo ?? '',
+            minimoValor: o.minimoValor === null || o.minimoValor === undefined ? '' : String(o.minimoValor),
             direccion: o.direccion,
             localidad: o.localidad,
             provincia: o.provincia,
@@ -161,6 +170,9 @@ export function OpticasTable({
       radioKm: Number(form.radioKm.replace(',', '.')) || 10,
       comisionPct: Number(form.comisionPct.replace(',', '.')) || 0,
       capacidadDiaria: Number(form.capacidadDiaria) || 20,
+      descuentoPct: Number(form.descuentoPct.replace(',', '.')) || 0,
+      minimoTipo: (form.minimoTipo || null) as OpticaAdmin['minimoTipo'],
+      minimoValor: form.minimoTipo ? Number(form.minimoValor.replace(',', '.')) || 0 : null,
       direccion: form.direccion.trim(),
       localidad: form.localidad.trim(),
       provincia: form.provincia.trim(),
@@ -411,6 +423,32 @@ export function OpticasTable({
             </Field>
             <Field label="Capacidad diaria" required error={errors.capacidadDiaria} hint="Pedidos nuevos por día; superado, se asigna a la siguiente.">
               <Input type="number" min={1} value={form.capacidadDiaria} onChange={f('capacidadDiaria')} required />
+            </Field>
+            <Field
+              label="Descuento mayorista (%)"
+              error={errors.descuentoPct}
+              hint="Sobre el precio mayorista de lista. Lo ve sólo esta óptica en su portal."
+            >
+              <Input value={form.descuentoPct} onChange={f('descuentoPct')} inputMode="decimal" data-testid="optica-descuento" />
+            </Field>
+            <Field label="Compra mínima" error={errors.minimoTipo} hint="Vacío = la general de Configuración.">
+              <div className="flex gap-2">
+                <Select value={form.minimoTipo} onChange={(e) => setForm({ ...form, minimoTipo: e.target.value })} className="flex-1">
+                  <option value="">Usar la general</option>
+                  <option value="NINGUNO">Sin mínimo</option>
+                  <option value="UNIDADES">Unidades</option>
+                  <option value="MONTO">Monto sin IVA ($)</option>
+                </Select>
+                {(form.minimoTipo === 'UNIDADES' || form.minimoTipo === 'MONTO') && (
+                  <Input
+                    value={form.minimoValor}
+                    onChange={f('minimoValor')}
+                    inputMode="decimal"
+                    className="w-32"
+                    aria-label="Valor de la compra mínima"
+                  />
+                )}
+              </div>
             </Field>
             <Field label="Dirección" required error={errors.direccion}>
               <Input

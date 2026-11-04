@@ -201,6 +201,10 @@ export interface OpticaAdmin {
   // B2B 1
   condicionIva?: CondicionIva | null;
   habilitacionUrl?: string | null;
+  // B2B 2: descuento sobre el precio mayorista y compra mínima propia (null = la general).
+  descuentoPct?: number;
+  minimoTipo?: 'NINGUNO' | 'UNIDADES' | 'MONTO' | null;
+  minimoValor?: number | null;
   /** Pedidos asignados hoy (lo calcula la API en el listado). */
   asignadosHoy?: number;
   usuarios?: number;

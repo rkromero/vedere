@@ -9,6 +9,8 @@ import { colors } from '@vedere/ui';
 import { AsignacionConfigForm } from '@/components/admin/tienda/AsignacionConfigForm';
 import type { AsignacionConfig } from '@/components/admin/tienda/AsignacionConfigForm';
 import { TiendaConfigForm } from '@/components/admin/tienda/TiendaConfigForm';
+import { MayoristaConfigForm } from '@/components/admin/mayorista/MayoristaConfigForm';
+import type { ConfigMayorista } from '@/lib/mayorista';
 import type { TiendaConfigFiscal } from '@/lib/admin/prompt6';
 
 export const metadata: Metadata = { title: 'Configuración' };
@@ -54,11 +56,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 export default async function ConfiguracionPage() {
-  const [user, storage, health, tienda] = await Promise.all([
+  const [user, storage, health, tienda, mayorista] = await Promise.all([
     getSession(),
     serverApiOrNull<StorageConfig>('/admin/imagenes/config'),
     serverApiOrNull<Health>('/health'),
     serverApiOrNull<ConfigTiendaRes>('/admin/config-tienda'),
+    serverApiOrNull<ConfigMayorista>('/admin/mayorista/config'),
   ]);
 
   return (
@@ -110,6 +113,26 @@ export default async function ConfiguracionPage() {
             </>
           ) : (
             <p className="text-sm text-gris-medio">No se pudo consultar la configuración de la tienda.</p>
+          )}
+        </Card>
+        <Card title="Canal mayorista (ópticas socias)" className="lg:col-span-2">
+          {mayorista ? (
+            <>
+              <MayoristaConfigForm inicial={mayorista} editable={user?.rol === 'ADMIN'} />
+              <p className="mt-4 text-sm text-gris-medio">
+                El descuento y la compra mínima propia de cada óptica se editan en{' '}
+                <Link href="/admin/opticas" className="underline underline-offset-2">
+                  Ópticas
+                </Link>
+                . Los pedidos están en{' '}
+                <Link href="/admin/mayorista" className="underline underline-offset-2">
+                  Pedidos mayoristas
+                </Link>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gris-medio">No se pudo consultar la configuración mayorista.</p>
           )}
         </Card>
         <Card
