@@ -18,6 +18,7 @@ const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boo
   { href: '/admin/pedidos', label: 'Pedidos' },
   { href: '/admin/solicitudes', label: 'Cambios y devoluciones' },
   { href: '/admin/opticas', label: 'Ópticas' },
+  { href: '/admin/mayorista', label: 'Pedidos mayoristas' },
   { href: '/admin/liquidaciones', label: 'Liquidaciones' },
   { href: '/admin/promos', label: 'Barra de promo' },
   { href: '/admin/cupones', label: 'Cupones' },

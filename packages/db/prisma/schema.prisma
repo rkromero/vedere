@@ -57,13 +57,14 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  refreshTokens  RefreshToken[]
-  carrito        Carrito?
-  pedidos        Pedido[]
-  recetas        Receta[]
-  direcciones    Direccion[]
-  favoritos      Favorito[]
-  passwordResets PasswordReset[]
+  refreshTokens    RefreshToken[]
+  carrito          Carrito?
+  carritoMayorista CarritoMayorista?
+  pedidos          Pedido[]
+  recetas          Receta[]
+  direcciones      Direccion[]
+  favoritos        Favorito[]
+  passwordResets   PasswordReset[]
 
   @@index([rol])
   @@index([opticaId])
@@ -284,8 +285,9 @@ model Producto {
   createdById      String?        @map("created_by_id")
   updatedById      String?        @map("updated_by_id")
 
-  variantes   Variante[]
-  pedidoItems PedidoItem[]
+  variantes            Variante[]
+  pedidoItems          PedidoItem[]
+  pedidoMayoristaItems PedidoMayoristaItem[]
 
   favoritos Favorito[]
 
@@ -317,10 +319,11 @@ model Variante {
   createdById     String?  @map("created_by_id")
   updatedById     String?  @map("updated_by_id")
 
-  imagenes    ImagenVariante[]
-  avisosStock AvisoStock[]
-  pedidoItems PedidoItem[]
-  reservas    ReservaStock[]
+  imagenes             ImagenVariante[]
+  avisosStock          AvisoStock[]
+  pedidoItems          PedidoItem[]
+  reservas             ReservaStock[]
+  pedidoMayoristaItems PedidoMayoristaItem[]
 
   @@index([productoId])
   @@index([colorArmazon])
@@ -369,45 +372,51 @@ model PromoMensaje {
 /// Óptica socia: arma, entrega y ajusta los pedidos cerca del cliente.
 /// `nombre` es el nombre comercial; `activa` = activa / pausada (pausada no recibe pedidos nuevos).
 model Optica {
-  id                String        @id @default(cuid())
+  id                String               @id @default(cuid())
   nombre            String
-  slug              String        @unique
-  razonSocial       String?       @map("razon_social")
+  slug              String               @unique
+  razonSocial       String?              @map("razon_social")
   cuit              String?
   direccion         String
   localidad         String
   provincia         String
-  codigoPostal      String        @map("codigo_postal")
+  codigoPostal      String               @map("codigo_postal")
   lat               Float?
   lng               Float?
   /// Radio de cobertura (km) para la asignación automática.
-  radioKm           Float         @default(10) @map("radio_km")
+  radioKm           Float                @default(10) @map("radio_km")
   telefono          String?
   whatsapp          String?
   email             String?
   horarios          String?
   /// Óptico técnico responsable y su matrícula.
-  opticoResponsable String?       @map("optico_responsable")
+  opticoResponsable String?              @map("optico_responsable")
   matricula         String?
   /// B2B: condición frente al IVA y habilitación municipal (archivo en R2).
-  condicionIva      CondicionIva? @map("condicion_iva")
-  habilitacionUrl   String?       @map("habilitacion_url")
+  condicionIva      CondicionIva?        @map("condicion_iva")
+  habilitacionUrl   String?              @map("habilitacion_url")
+  /// B2B 2: descuento (%) sobre el precio mayorista. En B2B 4 lo calcula el nivel de la óptica.
+  descuentoPct      Decimal              @default(0) @map("descuento_pct") @db.Decimal(5, 2)
+  /// Compra mínima propia (null = usa la general de ConfigMayorista).
+  minimoTipo        TipoMinimoMayorista? @map("minimo_tipo")
+  minimoValor       Decimal?             @map("minimo_valor") @db.Decimal(12, 2)
   /// Comisión (%) que cobra la óptica sobre el total de cada pedido entregado.
-  comisionPct       Decimal       @default(0) @map("comision_pct") @db.Decimal(5, 2)
+  comisionPct       Decimal              @default(0) @map("comision_pct") @db.Decimal(5, 2)
   /// Pedidos que puede recibir por día (asignados ese día).
-  capacidadDiaria   Int           @default(20) @map("capacidad_diaria")
-  activa            Boolean       @default(true)
-  orden             Int           @default(0)
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-  createdById       String?       @map("created_by_id")
-  updatedById       String?       @map("updated_by_id")
+  capacidadDiaria   Int                  @default(20) @map("capacidad_diaria")
+  activa            Boolean              @default(true)
+  orden             Int                  @default(0)
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  createdById       String?              @map("created_by_id")
+  updatedById       String?              @map("updated_by_id")
 
-  pedidos     Pedido[]
-  usuarios    User[]
-  eventos     PedidoEvento[]
-  turnos      Turno[]
-  solicitudes SolicitudOptica[]
+  pedidos           Pedido[]
+  usuarios          User[]
+  eventos           PedidoEvento[]
+  turnos            Turno[]
+  solicitudes       SolicitudOptica[]
+  pedidosMayoristas PedidoMayorista[]
 
   @@index([activa, provincia])
   @@index([codigoPostal])
@@ -842,20 +851,24 @@ enum EstadoReserva {
 }
 
 /// Reserva de stock mientras se paga (30 min en Mercado Pago; configurable para transferencia).
+/// B2B 2: también reserva stock de un pedido mayorista aprobado (pedidoId null, pedidoMayoristaId set).
 model ReservaStock {
-  id         String        @id @default(cuid())
-  pedidoId   String        @map("pedido_id")
-  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  varianteId String        @map("variante_id")
-  variante   Variante      @relation(fields: [varianteId], references: [id], onDelete: Cascade)
-  cantidad   Int
-  estado     EstadoReserva @default(ACTIVA)
-  expiraEn   DateTime      @map("expira_en")
-  createdAt  DateTime      @default(now()) @map("created_at")
-  updatedAt  DateTime      @updatedAt @map("updated_at")
+  id                String           @id @default(cuid())
+  pedidoId          String?          @map("pedido_id")
+  pedido            Pedido?          @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedidoMayoristaId String?          @map("pedido_mayorista_id")
+  pedidoMayorista   PedidoMayorista? @relation(fields: [pedidoMayoristaId], references: [id], onDelete: Cascade)
+  varianteId        String           @map("variante_id")
+  variante          Variante         @relation(fields: [varianteId], references: [id], onDelete: Cascade)
+  cantidad          Int
+  estado            EstadoReserva    @default(ACTIVA)
+  expiraEn          DateTime         @map("expira_en")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
 
   @@index([varianteId, estado])
   @@index([estado, expiraEn])
+  @@index([pedidoMayoristaId])
   @@map("reservas_stock")
 }
 
@@ -1218,4 +1231,140 @@ model ActualizacionPrecio {
 
   @@index([createdAt])
   @@map("actualizaciones_precio")
+}
+
+// ============================================================
+// B2B 2: catálogo y pedidos mayoristas (portal de la óptica)
+// ============================================================
+
+enum TipoMinimoMayorista {
+  NINGUNO
+  UNIDADES
+  MONTO
+}
+
+enum EnvioMayoristaModo {
+  /// Costo fijo que se suma al pedido.
+  COSTO_FIJO
+  /// El transporte lo paga la óptica al recibir (no se suma).
+  A_CARGO_OPTICA
+}
+
+enum EntregaMayorista {
+  ENVIO_TRANSPORTE
+  RETIRO_DEPOSITO
+}
+
+/// Separado de EstadoPedido: el canal mayorista no pasa por pago online ni por asignación a ópticas.
+/// PENDIENTE_APROBACION -> APROBADO (reserva stock) -> DESPACHADO (descuenta stock) -> ENTREGADO; CANCELADO es terminal.
+enum EstadoPedidoMayorista {
+  PENDIENTE_APROBACION
+  APROBADO
+  DESPACHADO
+  ENTREGADO
+  CANCELADO
+}
+
+/// Configuración del canal mayorista (una sola fila, id "default").
+model ConfigMayorista {
+  id               String              @id @default("default")
+  ivaPct           Decimal             @default(21) @map("iva_pct") @db.Decimal(5, 2)
+  minimoTipo       TipoMinimoMayorista @default(NINGUNO) @map("minimo_tipo")
+  minimoValor      Decimal             @default(0) @map("minimo_valor") @db.Decimal(12, 2)
+  envioHabilitado  Boolean             @default(true) @map("envio_habilitado")
+  envioModo        EnvioMayoristaModo  @default(A_CARGO_OPTICA) @map("envio_modo")
+  envioCosto       Decimal             @default(0) @map("envio_costo") @db.Decimal(12, 2)
+  retiroHabilitado Boolean             @default(true) @map("retiro_habilitado")
+  retiroDireccion  String?             @map("retiro_direccion")
+  retiroHorario    String?             @map("retiro_horario")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  updatedById      String?             @map("updated_by_id")
+
+  @@map("config_mayorista")
+}
+
+/// Carrito del portal de la óptica (por usuario). Independiente del carrito de la tienda.
+model CarritoMayorista {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// [{varianteId, cantidad}]
+  items     Json     @default("[]")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("carritos_mayoristas")
+}
+
+/// Pedido mayorista: número VM-10001 (secuencia pedidos_mayoristas_numero_seq), precios congelados sin IVA.
+model PedidoMayorista {
+  id                String                @id @default(cuid())
+  numero            String                @unique
+  estado            EstadoPedidoMayorista @default(PENDIENTE_APROBACION)
+  opticaId          String                @map("optica_id")
+  optica            Optica                @relation(fields: [opticaId], references: [id], onDelete: Restrict)
+  usuarioId         String?               @map("usuario_id")
+  usuarioNombre     String                @map("usuario_nombre")
+  usuarioEmail      String                @map("usuario_email")
+  entrega           EntregaMayorista
+  /// Snapshot de la dirección de envío o del depósito de retiro.
+  direccionEntrega  String                @map("direccion_entrega")
+  envioACargoOptica Boolean               @default(false) @map("envio_a_cargo_optica")
+  unidades          Int
+  /// Suma a precio mayorista de lista (sin IVA), antes del descuento.
+  subtotalLista     Decimal               @map("subtotal_lista") @db.Decimal(12, 2)
+  descuentoPct      Decimal               @default(0) @map("descuento_pct") @db.Decimal(5, 2)
+  descuento         Decimal               @default(0) @db.Decimal(12, 2)
+  /// Neto sin IVA (después del descuento).
+  subtotal          Decimal               @db.Decimal(12, 2)
+  envio             Decimal               @default(0) @db.Decimal(12, 2)
+  ivaPct            Decimal               @map("iva_pct") @db.Decimal(5, 2)
+  iva               Decimal               @db.Decimal(12, 2)
+  total             Decimal               @db.Decimal(12, 2)
+  notas             String?
+  notasInternas     String?               @map("notas_internas")
+  motivoCancelacion String?               @map("motivo_cancelacion")
+  /// Pedido del que se repitió (si vino de "Repetir pedido").
+  repetidoDeId      String?               @map("repetido_de_id")
+  aprobadoEn        DateTime?             @map("aprobado_en")
+  aprobadoPorId     String?               @map("aprobado_por_id")
+  despachadoEn      DateTime?             @map("despachado_en")
+  entregadoEn       DateTime?             @map("entregado_en")
+  canceladoEn       DateTime?             @map("cancelado_en")
+  numeroSeguimiento String?               @map("numero_seguimiento")
+  stockDescontado   Boolean               @default(false) @map("stock_descontado")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  items    PedidoMayoristaItem[]
+  reservas ReservaStock[]
+
+  @@index([opticaId, createdAt])
+  @@index([estado, createdAt])
+  @@map("pedidos_mayoristas")
+}
+
+model PedidoMayoristaItem {
+  id              String          @id @default(cuid())
+  pedidoId        String          @map("pedido_id")
+  pedido          PedidoMayorista @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  varianteId      String?         @map("variante_id")
+  variante        Variante?       @relation(fields: [varianteId], references: [id], onDelete: SetNull)
+  productoId      String?         @map("producto_id")
+  producto        Producto?       @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  nombre          String
+  sku             String
+  color           String
+  imagen          String?
+  /// Precio mayorista de lista (sin IVA) y precio con el descuento de la óptica, congelados.
+  precioMayorista Decimal         @map("precio_mayorista") @db.Decimal(12, 2)
+  descuentoPct    Decimal         @default(0) @map("descuento_pct") @db.Decimal(5, 2)
+  precioUnitario  Decimal         @map("precio_unitario") @db.Decimal(12, 2)
+  /// Precio sugerido al público (precio web) al momento del pedido.
+  precioPublico   Decimal?        @map("precio_publico") @db.Decimal(12, 2)
+  cantidad        Int
+  total           Decimal         @db.Decimal(12, 2)
+
+  @@index([pedidoId])
+  @@index([varianteId])
+  @@map("pedido_mayorista_items")
 }

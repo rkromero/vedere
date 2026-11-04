@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
   // Metadata bloqueante (siempre en <head>) para todos los user agents: generateMetadata usa el
   // mismo fetch cacheado que la página, así que no cuesta nada y Lighthouse/scrapers la ven sin JS.
   htmlLimitedBots: /.+/,
+  // forbidden() en páginas (403 real, p. ej. pedido mayorista de otra óptica).
+  experimental: { authInterrupts: true },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
   },

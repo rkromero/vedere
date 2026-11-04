@@ -36,6 +36,8 @@ export function serializeOpticaAdmin(
   return {
     ...o,
     comisionPct: dec(o.comisionPct) ?? 0,
+    descuentoPct: dec(o.descuentoPct) ?? 0,
+    minimoValor: dec(o.minimoValor),
     asignadosHoy: o.asignadosHoy ?? undefined,
     usuarios: o._count?.usuarios,
     pedidos: o._count?.pedidos,

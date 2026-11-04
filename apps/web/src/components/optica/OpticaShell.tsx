@@ -1,5 +1,5 @@
 'use client';
-// Layout del panel de la óptica socia: menú (Pedidos, Agenda, Liquidación, Usuarios), datos de la óptica y salir.
+// Layout del panel de la óptica socia: menú (catálogo y compras mayoristas, pedidos de clientes, agenda, liquidación, usuarios), datos de la óptica y salir.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
@@ -10,7 +10,10 @@ import { api } from '@/lib/api-client';
 
 const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: '/optica', label: 'Resumen', exact: true },
-  { href: '/optica/pedidos', label: 'Pedidos' },
+  { href: '/optica/catalogo', label: 'Catálogo mayorista' },
+  { href: '/optica/carrito', label: 'Carrito mayorista' },
+  { href: '/optica/compras', label: 'Mis compras' },
+  { href: '/optica/pedidos', label: 'Pedidos de clientes' },
   { href: '/optica/turnos', label: 'Agenda de turnos' },
   { href: '/optica/liquidacion', label: 'Liquidación' },
   { href: '/optica/usuarios', label: 'Usuarios' },

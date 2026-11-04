@@ -41,11 +41,24 @@ function vigente(now: Date): Prisma.PromoMensajeWhereInput {
   };
 }
 
-export function serializeOptica<
-  T extends { createdById?: string | null; updatedById?: string | null },
->(o: T) {
-  const { createdById: _c, updatedById: _u, ...rest } = o;
-  return rest;
+/** Campos internos de la óptica que nunca salen en endpoints públicos (comisión, condiciones mayoristas, papeles). */
+const OPTICA_PRIVADO = [
+  'createdById',
+  'updatedById',
+  'comisionPct',
+  'capacidadDiaria',
+  'descuentoPct',
+  'minimoTipo',
+  'minimoValor',
+  'habilitacionUrl',
+  'condicionIva',
+  'orden',
+] as const;
+
+export function serializeOptica<T extends object>(o: T): Omit<T, (typeof OPTICA_PRIVADO)[number]> {
+  const rest = { ...o } as Record<string, unknown>;
+  for (const k of OPTICA_PRIVADO) delete rest[k];
+  return rest as Omit<T, (typeof OPTICA_PRIVADO)[number]>;
 }
 
 const catalogoRoutes: FastifyPluginAsync = async (app) => {
