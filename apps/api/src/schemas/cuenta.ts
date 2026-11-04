@@ -66,3 +66,9 @@ export const googleCallbackQuery = z.object({
   state: z.string().min(1).max(500).optional(),
   error: z.string().max(200).optional(),
 });
+
+/** B2B 4: calificación del cliente a un pedido entregado. */
+export const calificacionInput = z.object({
+  puntaje: z.number({ error: 'Elegí de 1 a 5 estrellas' }).int().min(1, 'Elegí de 1 a 5 estrellas').max(5, 'Elegí de 1 a 5 estrellas'),
+  comentario: z.string().trim().max(500).nullable().optional(),
+});

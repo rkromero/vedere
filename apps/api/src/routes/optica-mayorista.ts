@@ -37,6 +37,8 @@ import {
 } from '../schemas/mayorista.js';
 import { categoriaConDescendientes } from './admin/categorias.js';
 
+import { filtroLanzamiento } from '../lib/niveles.js';
+
 const listQuery = paginationQuery.extend({ pageSize: paginationQuery.shape.pageSize.default(24) }).extend(catalogoMayoristaQuery.shape);
 const pedidosQuery = paginationQuery.extend(pedidosMayoristasQuery.pick({ estado: true, q: true }).shape);
 
@@ -50,13 +52,17 @@ const ORDEN: Record<string, Prisma.ProductoOrderByWithRelationInput[]> = {
 const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('onRequest', app.requireOptica);
 
-  async function contexto(request: { optica?: { descuentoPct: Prisma.Decimal } }) {
+  async function contexto(request: { optica?: { descuentoPct: Prisma.Decimal | null } }) {
     const cfg = await getConfigMayorista();
     return { cfg, descuentoPct: dec(request.optica!.descuentoPct) ?? 0, ivaPct: dec(cfg.ivaPct) ?? 21 };
   }
 
-  async function productoVendible(slug: string) {
-    const p = await prisma.producto.findFirst({ where: { slug, ...VENDIBLE_MAYORISTA }, include: productoMayoristaInclude });
+  /** B2B 4: colecciones que todavía no se lanzaron sólo se ven con acceso anticipado (beneficio de nivel). */
+  const lanzamiento = (request: { opticaCondiciones?: { accesoAnticipadoDias: number } }) =>
+    filtroLanzamiento(request.opticaCondiciones?.accesoAnticipadoDias ?? 0);
+
+  async function productoVendible(slug: string, request: { opticaCondiciones?: { accesoAnticipadoDias: number } }) {
+    const p = await prisma.producto.findFirst({ where: { slug, ...VENDIBLE_MAYORISTA, AND: [lanzamiento(request)] }, include: productoMayoristaInclude });
     if (!p) throw Errors.notFound('Producto no disponible en el catálogo mayorista');
     return p;
   }
@@ -108,7 +114,7 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/productos', async (request) => {
     const q = parse(listQuery, request.query);
-    const and: Prisma.ProductoWhereInput[] = [VENDIBLE_MAYORISTA];
+    const and: Prisma.ProductoWhereInput[] = [VENDIBLE_MAYORISTA, lanzamiento(request)];
     if (q.q) {
       for (const term of q.q.split(/\s+/).filter(Boolean).slice(0, 5)) {
         and.push({
@@ -149,14 +155,14 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get<{ Params: { slug: string } }>('/productos/:slug', async (request) => {
-    const p = await productoVendible(request.params.slug);
+    const p = await productoVendible(request.params.slug, request);
     const { descuentoPct, ivaPct } = await contexto(request);
     const disponible = await disponibleDeProductos([p]);
     return serializeProductoMayorista(p, { descuentoPct, ivaPct, disponible });
   });
 
   app.get<{ Params: { slug: string } }>('/productos/:slug/ficha.pdf', async (request, reply) => {
-    const p = await productoVendible(request.params.slug);
+    const p = await productoVendible(request.params.slug, request);
     const pdf = await fichaTecnicaPdf(app.env, p);
     return reply
       .header('content-type', 'application/pdf')
@@ -169,7 +175,7 @@ const opticaMayoristaRoutes: FastifyPluginAsync = async (app) => {
     '/productos/:slug/kit.zip',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const p = await productoVendible(request.params.slug);
+      const p = await productoVendible(request.params.slug, request);
       const zip = await kitProductoZip(app.env, p);
       return reply
         .header('content-type', 'application/zip')

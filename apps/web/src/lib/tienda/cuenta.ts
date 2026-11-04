@@ -36,6 +36,7 @@ export interface PedidoCuenta extends PedidoPublico {
   enviadoEn?: string | null;
   entregadoEn?: string | null;
   numeroSeguimiento?: string | null;
+  calificacion?: { puntaje: number; comentario: string | null; createdAt: string } | null;
 }
 
 export interface Direccion {

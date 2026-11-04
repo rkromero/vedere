@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { prisma } from '@vedere/db';
 import type { Optica, Prisma } from '@vedere/db';
 import { rangoDiaLocal } from '../../lib/asignacion.js';
+import { condicionesDe, evaluarLogros, getConfigNiveles, nivelInicial, NIVEL_INFO } from '../../lib/niveles.js';
+import type { ConfigNiveles } from '../../lib/niveles.js';
 import { Errors } from '../../lib/errors.js';
 import { paginate, pageResponse, paginationQuery } from '../../lib/pagination.js';
 import { dec } from '../../lib/serialize.js';
@@ -34,17 +36,23 @@ export function serializeOpticaAdmin(
   o: Optica & {
     asignadosHoy?: number;
     _count?: { usuarios: number; pedidos: number };
-    cuentaCorriente?: { limiteCredito: Prisma.Decimal; plazoPagoDias: number } | null;
+    cuentaCorriente?: { limiteCredito: Prisma.Decimal | null; plazoPagoDias: number | null } | null;
   },
+  cfg?: ConfigNiveles,
 ) {
   const { cuentaCorriente, ...rest } = o;
+  const cond = cfg ? condicionesDe(o, cuentaCorriente ?? null, cfg) : null;
   return {
     ...rest,
-    // B2B 3: cuenta corriente (en B2B 4 la define el nivel).
-    limiteCredito: dec(cuentaCorriente?.limiteCredito) ?? 0,
-    plazoPagoDias: cuentaCorriente?.plazoPagoDias ?? 30,
+    // B2B 3/4: excepciones (null = según nivel) y condiciones vigentes.
+    limiteCredito: dec(cuentaCorriente?.limiteCredito ?? null),
+    plazoPagoDias: cuentaCorriente?.plazoPagoDias ?? null,
     comisionPct: dec(o.comisionPct) ?? 0,
-    descuentoPct: dec(o.descuentoPct) ?? 0,
+    descuentoPct: dec(o.descuentoPct),
+    muestrario: !!o.muestrarioEn,
+    condiciones: cond,
+    nivelVigente: cond?.nivel ?? o.nivel,
+    nivelNombre: NIVEL_INFO[cond?.nivel ?? o.nivel].nombre,
     minimoValor: dec(o.minimoValor),
     asignadosHoy: o.asignadosHoy ?? undefined,
     usuarios: o._count?.usuarios,
@@ -72,7 +80,7 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
       ];
     }
     const { desde, hasta } = rangoDiaLocal();
-    const [total, items, carga] = await Promise.all([
+    const [total, items, carga, cfgNiveles] = await Promise.all([
       prisma.optica.count({ where }),
       prisma.optica.findMany({
         where,
@@ -85,10 +93,11 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         where: { opticaId: { not: null }, asignadoEn: { gte: desde, lt: hasta }, estado: { notIn: ['CANCELADO', 'DEVUELTO'] } },
         _count: { _all: true },
       }),
+      getConfigNiveles(),
     ]);
     const hoy = new Map(carga.map((c) => [c.opticaId!, c._count._all]));
     return pageResponse(
-      items.map((o) => serializeOpticaAdmin({ ...o, asignadosHoy: hoy.get(o.id) ?? 0 })),
+      items.map((o) => serializeOpticaAdmin({ ...o, asignadosHoy: hoy.get(o.id) ?? 0 }, cfgNiveles)),
       total,
       q,
     );
@@ -174,11 +183,11 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
       select: { id: true, nombre: true, email: true, activo: true },
       orderBy: { nombre: 'asc' },
     });
-    return { ...serializeOpticaAdmin(o), usuariosVinculados: usuarios };
+    return { ...serializeOpticaAdmin(o, await getConfigNiveles()), usuariosVinculados: usuarios };
   });
 
   app.post('/', async (request, reply) => {
-    const { limiteCredito, plazoPagoDias, ...body } = parse(opticaInput, request.body);
+    const { limiteCredito, plazoPagoDias, muestrario, ...body } = parse(opticaInput, request.body);
     const slug = await uniqueSlug(
       body.slug ?? body.nombre + ' ' + body.localidad,
       async (s) => !!(await prisma.optica.findUnique({ where: { slug: s }, select: { id: true } })),
@@ -190,15 +199,18 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         email: body.email || null,
         createdById: request.user.sub,
         updatedById: request.user.sub,
-        cuentaCorriente: { create: { limiteCredito: limiteCredito ?? 0, plazoPagoDias: plazoPagoDias ?? 30 } },
+        // B2B 4: arranca en Vetro con beneficios de Cristallo por unos meses.
+        ...(await nivelInicial()),
+        ...(muestrario ? { muestrarioEn: new Date() } : {}),
+        cuentaCorriente: { create: { limiteCredito: limiteCredito ?? null, plazoPagoDias: plazoPagoDias ?? null } },
       },
       include: { cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
     });
-    return reply.status(201).send(serializeOpticaAdmin(o));
+    return reply.status(201).send(serializeOpticaAdmin(o, await getConfigNiveles()));
   });
 
   app.put<{ Params: { id: string } }>('/:id', async (request) => {
-    const { limiteCredito, plazoPagoDias, ...body } = parse(opticaUpdate, request.body);
+    const { limiteCredito, plazoPagoDias, muestrario, ...body } = parse(opticaUpdate, request.body);
     const existing = await prisma.optica.findUnique({ where: { id: request.params.id } });
     if (!existing) throw Errors.notFound('Óptica no encontrada');
     if (body.slug && body.slug !== existing.slug) {
@@ -214,11 +226,12 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
         ...body,
         ...(body.email !== undefined ? { email: body.email || null } : {}),
         updatedById: request.user.sub,
+        ...(muestrario !== undefined ? { muestrarioEn: muestrario ? (existing.muestrarioEn ?? new Date()) : null } : {}),
         ...(limiteCredito !== undefined || plazoPagoDias !== undefined
           ? {
               cuentaCorriente: {
                 upsert: {
-                  create: { limiteCredito: limiteCredito ?? 0, plazoPagoDias: plazoPagoDias ?? 30 },
+                  create: { limiteCredito: limiteCredito ?? null, plazoPagoDias: plazoPagoDias ?? null },
                   update: {
                     ...(limiteCredito !== undefined ? { limiteCredito } : {}),
                     ...(plazoPagoDias !== undefined ? { plazoPagoDias } : {}),
@@ -230,7 +243,8 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
       },
       include: { cuentaCorriente: { select: { limiteCredito: true, plazoPagoDias: true } } },
     });
-    return serializeOpticaAdmin(o);
+    if (muestrario) await evaluarLogros(app.env, o.id);
+    return serializeOpticaAdmin(o, await getConfigNiveles());
   });
 
   app.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {

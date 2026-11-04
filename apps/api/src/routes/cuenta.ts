@@ -7,7 +7,7 @@ import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 import { Errors } from '../lib/errors.js';
 import { parse } from '../lib/validate.js';
-import { cambioPasswordInput, datosInput, direccionCuentaInput } from '../schemas/cuenta.js';
+import { calificacionInput, cambioPasswordInput, datosInput, direccionCuentaInput } from '../schemas/cuenta.js';
 import {
   LINEAS_CON_RECETA,
   cargarConfig,
@@ -181,7 +181,27 @@ const cuentaRoutes: FastifyPluginAsync = async (app) => {
       eventos: p.eventos.filter((e) => (EVENTOS_CLIENTE as readonly string[]).includes(e.tipo)).map(serializeEvento),
       turnos: p.turnos.map(serializeTurno),
       reembolsado: dec(p.reembolsado) ?? 0,
+      calificacion: await prisma.calificacionPedido.findUnique({
+        where: { pedidoId: p.id },
+        select: { puntaje: true, comentario: true, createdAt: true },
+      }),
     };
+  });
+
+  /** B2B 4: el cliente califica (1 a 5) un pedido entregado; alimenta la satisfacción de la óptica. */
+  app.post<{ Params: { id: string } }>('/pedidos/:id/calificacion', async (request, reply) => {
+    const body = parse(calificacionInput, request.body);
+    const p = await prisma.pedido.findUnique({ where: { id: request.params.id }, select: { id: true, userId: true, estado: true, opticaId: true } });
+    if (!p) throw Errors.notFound('Pedido no encontrado');
+    if (p.userId !== request.user.sub) throw Errors.forbidden('Este pedido pertenece a otra cuenta');
+    if (p.estado !== 'ENTREGADO') throw Errors.badRequest('Podés calificar el pedido cuando lo recibas');
+    const ya = await prisma.calificacionPedido.findUnique({ where: { pedidoId: p.id } });
+    if (ya) throw Errors.conflict('Ya calificaste este pedido');
+    const c = await prisma.calificacionPedido.create({
+      data: { pedidoId: p.id, opticaId: p.opticaId, puntaje: body.puntaje, comentario: body.comentario || null },
+      select: { puntaje: true, comentario: true, createdAt: true },
+    });
+    return reply.status(201).send(c);
   });
 
   // ---------- Recetas ----------

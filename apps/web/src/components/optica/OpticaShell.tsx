@@ -14,6 +14,7 @@ const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: '/optica/carrito', label: 'Carrito mayorista' },
   { href: '/optica/compras', label: 'Mis compras' },
   { href: '/optica/cuenta', label: 'Cuenta corriente' },
+  { href: '/optica/nivel', label: 'Mi nivel' },
   { href: '/optica/pedidos', label: 'Pedidos de clientes' },
   { href: '/optica/turnos', label: 'Agenda de turnos' },
   { href: '/optica/liquidacion', label: 'Liquidación' },

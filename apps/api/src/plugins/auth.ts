@@ -2,9 +2,11 @@
 import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { prisma } from '@vedere/db';
+import { Prisma, prisma } from '@vedere/db';
 import type { Optica, Rol } from '@vedere/db';
 import { AppError, Errors } from '../lib/errors.js';
+import { condicionesOptica } from '../lib/niveles.js';
+import type { Condiciones } from '../lib/niveles.js';
 import { ACCESS_COOKIE } from '../lib/tokens.js';
 import type { AccessPayload } from '../lib/tokens.js';
 
@@ -33,6 +35,8 @@ declare module 'fastify' {
   }
   interface FastifyRequest {
     optica?: Optica;
+    /** B2B 4: condiciones comerciales vigentes por nivel (descuento, crédito, acceso anticipado…). */
+    opticaCondiciones?: Condiciones;
     /** Sólo en /optica/*: si el usuario es dueño de la óptica y si tiene contraseña provisoria. */
     opticaUsuario?: { dueno: boolean; debeCambiarPassword: boolean };
   }
@@ -88,7 +92,10 @@ export default fp(
       if (user.debeCambiarPassword && !config?.permitirPasswordProvisoria) {
         throw new AppError(403, 'CAMBIAR_PASSWORD', 'Antes de seguir tenés que elegir una contraseña nueva');
       }
-      request.optica = user.optica;
+      // B2B 4: el descuento mayorista que rige es el del nivel (o la excepción de la óptica).
+      const cond = await condicionesOptica(user.optica.id);
+      request.optica = { ...user.optica, descuentoPct: new Prisma.Decimal(cond.descuentoPct) };
+      request.opticaCondiciones = cond;
       request.opticaUsuario = { dueno: user.opticaDueno, debeCambiarPassword: user.debeCambiarPassword };
     });
   },

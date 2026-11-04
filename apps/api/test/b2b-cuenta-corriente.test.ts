@@ -134,7 +134,8 @@ describe.skipIf(!hasDb)('B2B 3: cuenta corriente y gestión de pedidos mayorista
     const ap = await post(`/admin/mayorista/pedidos/${p2}/aprobar`, ctx.staffCookie, { nota: 'Cliente histórico' });
     expect(ap.json()).toMatchObject({ estado: 'APROBADO' });
     expect(ap.json().eventos.map((e: { estado: string | null }) => e.estado)).toEqual(['PENDIENTE_APROBACION', 'EN_REVISION', 'APROBADO']);
-    // Una óptica sin crédito asignado siempre queda en revisión.
+    // Una óptica con límite 0 (excepción sobre el crédito de su nivel) siempre queda en revisión.
+    await put(`/admin/opticas/${opticaB}`, ctx.staffCookie, { limiteCredito: 0 });
     expect((await comprar(cookieB, 1)).estado).toBe('EN_REVISION');
   });
 

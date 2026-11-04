@@ -8,6 +8,7 @@ import { EN_MAYORISTA } from './canales.js';
 import { AppError, Errors } from './errors.js';
 import { disponibilidad } from './reservas.js';
 import { dec } from './serialize.js';
+import { condicionesOptica } from './niveles.js';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -593,11 +594,12 @@ export async function confirmarPedidoMayorista(
   return prisma.$transaction(async (tx) => {
     const numero = await siguienteNumeroMayorista(tx);
     // B2B 3: el pedido vence según el plazo vigente al momento de la compra.
-    const cuenta = await tx.cuentaCorriente.upsert({ where: { opticaId: optica.id }, create: { opticaId: optica.id }, update: {} });
+    await tx.cuentaCorriente.upsert({ where: { opticaId: optica.id }, create: { opticaId: optica.id }, update: {} });
+    const cond = await condicionesOptica(optica.id, tx);
     const p = await tx.pedidoMayorista.create({
       data: {
         numero,
-        plazoPagoDias: cuenta.plazoPagoDias,
+        plazoPagoDias: cond.plazoPagoDias,
         opticaId: optica.id,
         usuarioId: usuario.id,
         usuarioNombre: usuario.nombre,

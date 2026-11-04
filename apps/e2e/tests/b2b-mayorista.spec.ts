@@ -63,8 +63,9 @@ test.describe.serial('Pedido mayorista de una óptica socia', () => {
     const emails: string[] = [];
     for (const [i, o] of opticas.items.slice(0, 2).entries()) {
       const email = emailUnico(`mayorista-${i}`);
-      // La óptica no debe tener una compra mínima propia que pise la general.
-      await req.put(`/api/admin/opticas/${o.id}`, { data: { minimoTipo: null, minimoValor: null } });
+      // La óptica no debe tener una compra mínima propia que pise la general. Con límite de crédito 0
+      // y plazo de 30 días (excepciones a los de su nivel) el pedido pasa a revisión y la deuda no vence en el día.
+      await req.put(`/api/admin/opticas/${o.id}`, { data: { minimoTipo: null, minimoValor: null, limiteCredito: 0, plazoPagoDias: 30 } });
       const u = await req.post('/api/admin/usuarios', {
         data: { email, nombre: `Compras E2E ${i}`, rol: 'OPTICA', opticaId: o.id, password: PASSWORD, activo: true },
       });
@@ -181,5 +182,24 @@ test.describe.serial('Pedido mayorista de una óptica socia', () => {
 
     await page.goto(`/optica/compras/${compraId}`);
     await expect(page.getByTestId('compra-pago')).toContainText('Pago parcial');
+  });
+
+  test('la óptica ve su nivel y el admin el reporte de niveles', async ({ page, browser }) => {
+    await loginOpticaComo(page, datos.emailA);
+    await page.goto('/optica/nivel');
+    await expect(page.getByTestId('panel-nivel')).toBeVisible();
+    await expect(page.getByTestId('nivel-actual')).toContainText(/Vetro|Cristallo|Prisma|Zafiro/);
+    await expect(page.getByTestId('variables')).toContainText('Unidades en 12 meses');
+    await expect(page.getByTestId('logros')).toContainText('Primer foco');
+    const api = await page.request.get('/api/admin/niveles/reporte');
+    expect([401, 403]).toContain(api.status());
+
+    const admin = await browser.newPage();
+    await loginAdmin(admin);
+    await admin.goto('/admin/niveles');
+    await expect(admin.getByTestId('opticas-por-nivel')).toContainText('Zafiro');
+    await admin.getByTestId('recalcular-niveles').click();
+    await expect(admin.getByText(/Recalculadas \d+ ópticas/)).toBeVisible();
+    await admin.close();
   });
 });
