@@ -1,5 +1,5 @@
 'use client';
-// Layout del panel de la óptica socia: menú (Pedidos, Agenda, Liquidación), datos de la óptica y salir.
+// Layout del panel de la óptica socia: menú (Pedidos, Agenda, Liquidación, Usuarios), datos de la óptica y salir.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
@@ -13,6 +13,7 @@ const NAV: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: '/optica/pedidos', label: 'Pedidos' },
   { href: '/optica/turnos', label: 'Agenda de turnos' },
   { href: '/optica/liquidacion', label: 'Liquidación' },
+  { href: '/optica/usuarios', label: 'Usuarios' },
 ];
 
 export function OpticaShell({ user, children }: { user: SessionUser; children: ReactNode }) {

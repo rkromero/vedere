@@ -1,5 +1,6 @@
 // "Volvió el stock" (prompt 6): avisos pendientes (AvisoStock.notificadoEn null) cuya variante volvió a tener
 // stock → email VOLVIO_STOCK y se marca como notificado. Idempotente por claim atómico.
+import { EN_TIENDA } from '../lib/canales.js';
 import { prisma } from '@vedere/db';
 import type { Env } from '../env.js';
 import { enviarPlantilla } from '../lib/plantillas.js';
@@ -8,7 +9,7 @@ const LOTE = 200;
 
 export async function jobVolvioStock(env: Env, ahora = new Date()): Promise<number> {
   const avisos = await prisma.avisoStock.findMany({
-    where: { notificadoEn: null, variante: { activa: true, stock: { gt: 0 }, producto: { estado: 'PUBLICADO' } } },
+    where: { notificadoEn: null, variante: { activa: true, stock: { gt: 0 }, producto: { ...EN_TIENDA } } },
     include: { variante: { include: { producto: { select: { nombre: true, slug: true } } } } },
     orderBy: { createdAt: 'asc' },
     take: LOTE,

@@ -1,6 +1,7 @@
 // Panel de la óptica socia (rol OPTICA): sus pedidos asignados (nunca los de otra óptica → 403),
 // aceptar / rechazar, avanzar estados, agenda de turnos y liquidación mensual.
 import type { FastifyPluginAsync } from 'fastify';
+import argon2 from 'argon2';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
 import { actorDe, cambiarEstado, rechazarAsignacion } from '../lib/asignacion.js';
@@ -9,6 +10,9 @@ import { liquidacionOptica } from '../lib/liquidacion.js';
 import { paginate, pageResponse, paginationQuery } from '../lib/pagination.js';
 import { pedidoIncludeDetalle, serializePedido, serializeTurno } from '../lib/pedidos.js';
 import { dec } from '../lib/serialize.js';
+import { enviarPlantilla } from '../lib/plantillas.js';
+import { hashPassword, passwordProvisoria } from '../lib/solicitudes-optica.js';
+import { cambiarPasswordInput, usuarioOpticaInput } from '../schemas/b2b.js';
 import { parse } from '../lib/validate.js';
 import {
   liquidacionQuery,
@@ -36,7 +40,7 @@ const opticaRoutes: FastifyPluginAsync = async (app) => {
     return p;
   }
 
-  app.get('/me', async (request) => {
+  app.get('/me', { config: { permitirPasswordProvisoria: true } }, async (request) => {
     const o = request.optica!;
     const [pendientes, enCurso, hoy] = await Promise.all([
       prisma.pedido.count({ where: { opticaId: o.id, estado: 'ASIGNADO' } }),
@@ -50,7 +54,13 @@ const opticaRoutes: FastifyPluginAsync = async (app) => {
       }),
     ]);
     return {
-      usuario: { id: request.user.sub, email: request.user.email, nombre: request.user.nombre ?? null },
+      usuario: {
+        id: request.user.sub,
+        email: request.user.email,
+        nombre: request.user.nombre ?? null,
+        dueno: request.opticaUsuario?.dueno ?? false,
+        debeCambiarPassword: request.opticaUsuario?.debeCambiarPassword ?? false,
+      },
       optica: {
         id: o.id,
         nombre: o.nombre,
@@ -67,6 +77,7 @@ const opticaRoutes: FastifyPluginAsync = async (app) => {
         horarios: o.horarios,
         opticoResponsable: o.opticoResponsable,
         matricula: o.matricula,
+        condicionIva: o.condicionIva,
         radioKm: o.radioKm,
         capacidadDiaria: o.capacidadDiaria,
         comisionPct: dec(o.comisionPct) ?? 0,
@@ -231,6 +242,123 @@ const opticaRoutes: FastifyPluginAsync = async (app) => {
   app.get('/liquidacion', async (request) => {
     const q = parse(liquidacionQuery.omit({ opticaId: true }), request.query);
     return liquidacionOptica(request.optica!.id, q.mes);
+  });
+
+  // ---------- Contraseña (B2B 1) ----------
+
+  /** Cambio de contraseña; obligatorio con la provisoria (es lo único que se puede hacer antes). */
+  app.post('/password', { config: { permitirPasswordProvisoria: true } }, async (request, reply) => {
+    const body = parse(cambiarPasswordInput, request.body);
+    const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
+    if (!user) throw Errors.unauthorized();
+    const ok = await argon2.verify(user.passwordHash, body.actual).catch(() => false);
+    if (!ok) throw Errors.badRequest('La contraseña actual no es correcta', { campo: 'actual' });
+    if (body.actual === body.nueva) throw Errors.badRequest('La contraseña nueva tiene que ser distinta de la actual', { campo: 'nueva' });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await hashPassword(body.nueva), debeCambiarPassword: false },
+    });
+    return reply.status(204).send();
+  });
+
+  // ---------- Usuarios del equipo (B2B 1) ----------
+
+  /** El dueño da de alta y administra a su equipo; el resto sólo ve la lista. */
+  function exigirDueno(request: { opticaUsuario?: { dueno: boolean } }) {
+    if (!request.opticaUsuario?.dueno) throw Errors.forbidden('Sólo el dueño de la óptica puede administrar usuarios');
+  }
+
+  const usuarioSelect = {
+    id: true,
+    nombre: true,
+    email: true,
+    telefono: true,
+    activo: true,
+    opticaDueno: true,
+    debeCambiarPassword: true,
+    createdAt: true,
+  } as const;
+
+  app.get('/usuarios', async (request) => {
+    const items = await prisma.user.findMany({
+      where: { opticaId: request.optica!.id, rol: 'OPTICA' },
+      select: usuarioSelect,
+      orderBy: [{ opticaDueno: 'desc' }, { nombre: 'asc' }],
+    });
+    return { items, puedeAdministrar: request.opticaUsuario?.dueno ?? false };
+  });
+
+  app.post('/usuarios', async (request, reply) => {
+    exigirDueno(request);
+    const body = parse(usuarioOpticaInput, request.body);
+    const existe = await prisma.user.findUnique({ where: { email: body.email }, select: { id: true } });
+    if (existe) throw Errors.conflict('Ya existe un usuario con ese email');
+    const password = passwordProvisoria();
+    const user = await prisma.user.create({
+      data: {
+        email: body.email,
+        nombre: body.nombre,
+        telefono: body.telefono,
+        rol: 'OPTICA',
+        opticaId: request.optica!.id,
+        opticaDueno: false,
+        debeCambiarPassword: true,
+        passwordHash: await hashPassword(password),
+      },
+      select: usuarioSelect,
+    });
+    const web = app.env.WEB_URL.replace(/\/$/, '');
+    await enviarPlantilla(app.env, {
+      tipo: 'OPTICA_USUARIO_NUEVO',
+      para: user.email,
+      vars: { nombre: user.nombre.split(' ')[0] || user.nombre, optica: request.optica!.nombre, email: user.email, password, url: `${web}/optica/login` },
+      ctaHref: `${web}/optica/login`,
+    });
+    return reply.status(201).send({ usuario: user, passwordProvisoria: password });
+  });
+
+  /** Usuario del equipo de esta óptica (nunca el propio ni el de otra óptica). */
+  async function usuarioDelEquipo(request: { params: { id: string }; optica?: { id: string }; user: { sub: string } }) {
+    const u = await prisma.user.findUnique({ where: { id: request.params.id } });
+    if (!u || u.opticaId !== request.optica!.id || u.rol !== 'OPTICA') throw Errors.notFound('Usuario no encontrado');
+    if (u.id === request.user.sub) throw Errors.badRequest('No podés modificar tu propio usuario desde acá');
+    return u;
+  }
+
+  app.post<{ Params: { id: string } }>('/usuarios/:id/desactivar', async (request) => {
+    exigirDueno(request);
+    const u = await usuarioDelEquipo(request);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: u.id }, data: { activo: false } }),
+      prisma.refreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    return { id: u.id, activo: false };
+  });
+
+  app.post<{ Params: { id: string } }>('/usuarios/:id/activar', async (request) => {
+    exigirDueno(request);
+    const u = await usuarioDelEquipo(request);
+    await prisma.user.update({ where: { id: u.id }, data: { activo: true } });
+    return { id: u.id, activo: true };
+  });
+
+  /** Nueva contraseña provisoria (se muestra una vez y va por email). */
+  app.post<{ Params: { id: string } }>('/usuarios/:id/password', async (request) => {
+    exigirDueno(request);
+    const u = await usuarioDelEquipo(request);
+    const password = passwordProvisoria();
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: u.id }, data: { passwordHash: await hashPassword(password), debeCambiarPassword: true } }),
+      prisma.refreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    const web = app.env.WEB_URL.replace(/\/$/, '');
+    await enviarPlantilla(app.env, {
+      tipo: 'OPTICA_USUARIO_NUEVO',
+      para: u.email,
+      vars: { nombre: u.nombre.split(' ')[0] || u.nombre, optica: request.optica!.nombre, email: u.email, password, url: `${web}/optica/login` },
+      ctaHref: `${web}/optica/login`,
+    });
+    return { id: u.id, passwordProvisoria: password };
   });
 };
 

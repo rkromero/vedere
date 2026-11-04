@@ -52,7 +52,7 @@ export const plantillaPreview = plantillaUpdate.partial();
 export const plantillaPruebaInput = z.object({ para: emailSchema });
 
 // ---------- Admin: páginas legales ----------
-export const PAGINAS_SLUGS = ['terminos', 'privacidad', 'cambios', 'cookies'] as const;
+export const PAGINAS_SLUGS = ['terminos', 'privacidad', 'cambios', 'cookies', 'programa-opticas'] as const;
 export const paginaLegalUpdate = z.object({
   titulo: z.string().trim().min(2, 'Ingresá el título').max(160),
   intro: nullableStr(400),

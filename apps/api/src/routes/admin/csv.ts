@@ -34,6 +34,9 @@ export const CSV_COLUMNS = [
   'varilla_mm',
   'precio',
   'precio_lista',
+  'precio_mayorista',
+  'visible_tienda',
+  'visible_mayorista',
   'permite_receta',
   'destacado',
   'edicion_limitada',
@@ -92,6 +95,9 @@ export async function exportProductosCsv(): Promise<string> {
       varilla_mm: num(p.varillaMm),
       precio: num(dec(p.precio)),
       precio_lista: num(dec(p.precioLista)),
+      precio_mayorista: num(dec(p.precioMayorista)),
+      visible_tienda: bool(p.visibleTienda),
+      visible_mayorista: bool(p.visibleMayorista),
       permite_receta: bool(p.permiteReceta),
       destacado: bool(p.destacado),
       edicion_limitada: bool(p.edicionLimitada),
@@ -162,6 +168,12 @@ const optStr = z
   .trim()
   .transform((v) => (v === '' ? null : v));
 
+/** si/no opcional: columna ausente o vacía = no tocar (en un alta queda el default: visible). */
+const siNoOpcional = z
+  .string()
+  .optional()
+  .transform((v) => (v === undefined || v.trim() === '' ? undefined : ['si', 'sí', 'true', '1', 'yes'].includes(v.trim().toLowerCase())));
+
 const rowSchema = z.object({
   producto_slug: z.string().trim().min(1, 'producto_slug es obligatorio'),
   nombre: z.string().trim().min(2, 'nombre es obligatorio'),
@@ -191,6 +203,10 @@ const rowSchema = z.object({
     .transform((v) => Number(v.replace(',', '.')))
     .pipe(z.number().nonnegative('precio inválido')),
   precio_lista: optNum,
+  // Columnas B2B: opcionales para que un CSV viejo (sin ellas) no pise los valores actuales.
+  precio_mayorista: optNum.pipe(z.number().nonnegative('precio_mayorista inválido').nullable()).optional(),
+  visible_tienda: siNoOpcional,
+  visible_mayorista: siNoOpcional,
   permite_receta: z.string().default('no').pipe(siNo),
   destacado: z.string().default('no').pipe(siNo),
   edicion_limitada: z.string().default('no').pipe(siNo),
@@ -353,6 +369,9 @@ export async function importProductosCsv(csv: string, userId: string): Promise<I
           varillaMm: first.varilla_mm,
           precio: first.precio,
           precioLista: first.precio_lista,
+          ...(first.precio_mayorista !== undefined ? { precioMayorista: first.precio_mayorista } : {}),
+          ...(first.visible_tienda !== undefined ? { visibleTienda: first.visible_tienda } : {}),
+          ...(first.visible_mayorista !== undefined ? { visibleMayorista: first.visible_mayorista } : {}),
           permiteReceta: first.permite_receta,
           destacado: first.destacado,
           edicionLimitada: first.edicion_limitada,

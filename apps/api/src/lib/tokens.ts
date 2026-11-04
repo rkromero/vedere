@@ -21,6 +21,9 @@ export interface SessionUser {
   activo: boolean;
   /** Sólo rol OPTICA: óptica socia a la que pertenece. */
   opticaId?: string | null;
+  /** B2B: dueño de la óptica y contraseña provisoria pendiente de cambio. */
+  opticaDueno?: boolean;
+  debeCambiarPassword?: boolean;
   createdAt: Date;
 }
 
@@ -42,6 +45,8 @@ export function toPublicUser(user: SessionUser & { optica?: { id: string; nombre
     activo: user.activo,
     opticaId: user.opticaId ?? null,
     optica: user.optica ? { id: user.optica.id, nombre: user.optica.nombre, slug: user.optica.slug } : null,
+    opticaDueno: user.opticaDueno ?? false,
+    debeCambiarPassword: user.debeCambiarPassword ?? false,
     createdAt: user.createdAt,
   };
 }

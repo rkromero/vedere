@@ -4,7 +4,7 @@ import jwt from '@fastify/jwt';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Optica, Rol } from '@vedere/db';
-import { Errors } from '../lib/errors.js';
+import { AppError, Errors } from '../lib/errors.js';
 import { ACCESS_COOKIE } from '../lib/tokens.js';
 import type { AccessPayload } from '../lib/tokens.js';
 
@@ -33,6 +33,12 @@ declare module 'fastify' {
   }
   interface FastifyRequest {
     optica?: Optica;
+    /** Sólo en /optica/*: si el usuario es dueño de la óptica y si tiene contraseña provisoria. */
+    opticaUsuario?: { dueno: boolean; debeCambiarPassword: boolean };
+  }
+  interface FastifyContextConfig {
+    /** /optica/*: la ruta se puede usar con la contraseña provisoria (ver datos y cambiarla). */
+    permitirPasswordProvisoria?: boolean;
   }
 }
 
@@ -73,11 +79,17 @@ export default fp(
       if (request.user.rol !== 'OPTICA') throw Errors.forbidden();
       const user = await prisma.user.findUnique({
         where: { id: request.user.sub },
-        select: { activo: true, opticaId: true, optica: true },
+        select: { activo: true, opticaId: true, optica: true, opticaDueno: true, debeCambiarPassword: true },
       });
       if (!user || !user.activo) throw Errors.unauthorized();
       if (!user.optica) throw Errors.forbidden('Tu usuario no está vinculado a ninguna óptica');
+      // Contraseña provisoria: hasta cambiarla sólo puede ver sus datos y cambiarla.
+      const config = request.routeOptions.config as { permitirPasswordProvisoria?: boolean } | undefined;
+      if (user.debeCambiarPassword && !config?.permitirPasswordProvisoria) {
+        throw new AppError(403, 'CAMBIAR_PASSWORD', 'Antes de seguir tenés que elegir una contraseña nueva');
+      }
       request.optica = user.optica;
+      request.opticaUsuario = { dueno: user.opticaDueno, debeCambiarPassword: user.debeCambiarPassword };
     });
   },
   { name: 'vedere-auth', dependencies: ['@fastify/cookie'] },

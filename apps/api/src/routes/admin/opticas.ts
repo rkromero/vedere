@@ -10,6 +10,18 @@ import { dec } from '../../lib/serialize.js';
 import { uniqueSlug } from '../../lib/slug.js';
 import { parse } from '../../lib/validate.js';
 import { opticaInput, opticaUpdate } from '../../schemas/tienda.js';
+import {
+  aprobarSolicitudOpticaInput,
+  rechazarSolicitudOpticaInput,
+  solicitudesOpticaQuery,
+} from '../../schemas/b2b.js';
+import {
+  aprobarSolicitudOptica,
+  rechazarSolicitudOptica,
+  serializeSolicitudOptica,
+} from '../../lib/solicitudes-optica.js';
+
+const solicitudesQuery = paginationQuery.extend(solicitudesOpticaQuery.shape);
 
 const listQuery = paginationQuery.extend({
   q: z.string().trim().max(80).optional(),
@@ -70,6 +82,65 @@ const opticasRoutes: FastifyPluginAsync = async (app) => {
       total,
       q,
     );
+  });
+
+  // ---------- Solicitudes de alta (B2B 1) ----------
+
+  app.get('/solicitudes', async (request) => {
+    const q = parse(solicitudesQuery, request.query);
+    const where: Prisma.SolicitudOpticaWhereInput = q.estado ? { estado: q.estado } : {};
+    if (q.q) {
+      const contains = { contains: q.q, mode: 'insensitive' as const };
+      where.OR = [
+        { nombreComercial: contains },
+        { razonSocial: contains },
+        { cuit: contains },
+        { email: contains },
+        { localidad: contains },
+      ];
+    }
+    const [total, items, porEstado] = await Promise.all([
+      prisma.solicitudOptica.count({ where }),
+      prisma.solicitudOptica.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }],
+        include: { optica: { select: { id: true, nombre: true, slug: true } } },
+        ...paginate(q),
+      }),
+      prisma.solicitudOptica.groupBy({ by: ['estado'], _count: { _all: true } }),
+    ]);
+    return {
+      ...pageResponse(items.map(serializeSolicitudOptica), total, q),
+      resumen: Object.fromEntries(porEstado.map((e) => [e.estado, e._count._all])),
+    };
+  });
+
+  app.get<{ Params: { id: string } }>('/solicitudes/:id', async (request) => {
+    const s = await prisma.solicitudOptica.findUnique({
+      where: { id: request.params.id },
+      include: { optica: { select: { id: true, nombre: true, slug: true } } },
+    });
+    if (!s) throw Errors.notFound('Solicitud no encontrada');
+    // Ópticas que ya existen con el mismo CUIT (al aprobar se vincula en vez de crear otra).
+    const coincidencias = await prisma.optica.findMany({
+      where: { cuit: s.cuit },
+      select: { id: true, nombre: true, slug: true, localidad: true, activa: true },
+    });
+    const usuario = await prisma.user.findUnique({
+      where: { email: s.email },
+      select: { id: true, rol: true, opticaId: true, activo: true },
+    });
+    return { ...serializeSolicitudOptica(s), coincidencias, usuarioExistente: usuario };
+  });
+
+  app.post<{ Params: { id: string } }>('/solicitudes/:id/aprobar', async (request) => {
+    const body = parse(aprobarSolicitudOpticaInput, request.body ?? {});
+    return aprobarSolicitudOptica(app.env, request.params.id, body, request.user.sub);
+  });
+
+  app.post<{ Params: { id: string } }>('/solicitudes/:id/rechazar', async (request) => {
+    const body = parse(rechazarSolicitudOpticaInput, request.body);
+    return rechazarSolicitudOptica(app.env, request.params.id, body.motivo, request.user.sub);
   });
 
   /** Todas las ópticas con coordenadas (para el mapa del backoffice). */

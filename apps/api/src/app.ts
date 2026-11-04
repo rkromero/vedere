@@ -22,6 +22,7 @@ import carritoRoutes from './routes/carrito.js';
 import checkoutRoutes from './routes/checkout.js';
 import opticaRoutes from './routes/optica.js';
 import cuentaRoutes from './routes/cuenta.js';
+import programaOpticasRoutes from './routes/programa-opticas.js';
 import sitioRoutes from './routes/sitio.js';
 import feedsRoutes from './routes/feeds.js';
 import jobsRoutes from './routes/jobs.js';
@@ -112,6 +113,7 @@ export async function buildApp(opts: BuildAppOptions = {}) {
   await app.register(opticaRoutes, { prefix: '/optica' });
   await app.register(cuentaRoutes, { prefix: '/cuenta' });
   await app.register(sitioRoutes, { prefix: '/sitio' });
+  await app.register(programaOpticasRoutes, { prefix: '/sitio/opticas' });
   await app.register(feedsRoutes, { prefix: '/feeds' });
   await app.register(jobsRoutes, { prefix: '/jobs' });
 

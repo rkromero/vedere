@@ -78,6 +78,9 @@ export function serializeProducto(p: ProductoFull) {
     medidas: { calibreMm: p.calibreMm, puenteMm: p.puenteMm, varillaMm: p.varillaMm },
     precio: dec(p.precio) ?? 0,
     precioLista: dec(p.precioLista),
+    precioMayorista: dec(p.precioMayorista),
+    visibleTienda: p.visibleTienda,
+    visibleMayorista: p.visibleMayorista,
     permiteReceta: p.permiteReceta,
     destacado: p.destacado,
     edicionLimitada: p.edicionLimitada,
@@ -99,10 +102,20 @@ export function serializeProducto(p: ProductoFull) {
   };
 }
 
-/** Versión pública (tienda): sin auditoría ni variantes inactivas. */
+/**
+ * Versión pública (tienda): sin auditoría, sin variantes inactivas y sin datos del canal mayorista
+ * (precioMayorista y visibilidad por canal nunca salen en una respuesta pública).
+ */
 export function serializeProductoPublico(p: ProductoFull) {
   const full = serializeProducto({ ...p, variantes: p.variantes.filter((v) => v.activa) });
-  const { createdById: _c, updatedById: _u, ...rest } = full;
+  const {
+    createdById: _c,
+    updatedById: _u,
+    precioMayorista: _pm,
+    visibleTienda: _vt,
+    visibleMayorista: _vm,
+    ...rest
+  } = full;
   return {
     ...rest,
     variantes: rest.variantes.map(({ createdById: _a, updatedById: _b, ...v }) => v),

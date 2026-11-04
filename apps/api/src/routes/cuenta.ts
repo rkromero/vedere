@@ -1,5 +1,6 @@
 // Cuenta del cliente (prompt 6): datos personales, pedidos, recetas, direcciones, favoritos, referidos y
 // Plan Rivedere. Todas las rutas exigen sesión (cualquier rol: el staff también puede comprar).
+import { EN_TIENDA } from '../lib/canales.js';
 import type { FastifyPluginAsync } from 'fastify';
 import argon2 from 'argon2';
 import { prisma } from '@vedere/db';
@@ -89,7 +90,7 @@ const cuentaRoutes: FastifyPluginAsync = async (app) => {
       prisma.pedido.count({ where: { userId: user.id } }),
       prisma.receta.count({ where: { userId: user.id } }),
       prisma.direccion.count({ where: { userId: user.id } }),
-      prisma.favorito.count({ where: { userId: user.id, producto: { estado: 'PUBLICADO' } } }),
+      prisma.favorito.count({ where: { userId: user.id, producto: { ...EN_TIENDA } } }),
       cargarConfig(),
       prisma.pedido.findFirst({
         where: {
@@ -274,7 +275,7 @@ const cuentaRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/favoritos', async (request) => {
     const favs = await prisma.favorito.findMany({
-      where: { userId: request.user.sub, producto: { estado: 'PUBLICADO' } },
+      where: { userId: request.user.sub, producto: { ...EN_TIENDA } },
       include: { producto: { include: productoInclude } },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -288,8 +289,8 @@ const cuentaRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.put<{ Params: { productoId: string } }>('/favoritos/:productoId', async (request, reply) => {
-    const producto = await prisma.producto.findUnique({ where: { id: request.params.productoId }, select: { id: true, estado: true } });
-    if (!producto || producto.estado !== 'PUBLICADO') throw Errors.notFound('Producto no encontrado');
+    const producto = await prisma.producto.findUnique({ where: { id: request.params.productoId }, select: { id: true, estado: true, visibleTienda: true } });
+    if (!producto || producto.estado !== 'PUBLICADO' || !producto.visibleTienda) throw Errors.notFound('Producto no encontrado');
     await prisma.favorito.upsert({
       where: { userId_productoId: { userId: request.user.sub, productoId: producto.id } },
       create: { userId: request.user.sub, productoId: producto.id },
