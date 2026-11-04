@@ -3,6 +3,8 @@
 // Prompt 4: checkout (pedidos, pagos, reservas de stock, recetas), promociones, creadores y configuración de tienda.
 // Prompt 5: red de ópticas socias (datos fiscales, radio, capacidad, comisión, usuarios OPTICA), asignación
 // automática de pedidos, línea de tiempo de eventos, turnos, solicitudes de cambio, reembolsos y emails.
+// B2B 1: precio mayorista y visibilidad por canal, solicitudes de alta de ópticas, varios usuarios por óptica
+// (dueño + equipo), contraseña provisoria y auditoría de actualizaciones masivas de precios.
 
 generator client {
   provider = "prisma-client-js"
@@ -25,16 +27,16 @@ enum Rol {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  nombre       String
-  telefono     String?
-  passwordHash String   @map("password_hash")
-  rol          Rol      @default(CLIENTE)
-  activo       Boolean  @default(true)
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  nombre                 String
+  telefono               String?
+  passwordHash           String    @map("password_hash")
+  rol                    Rol       @default(CLIENTE)
+  activo                 Boolean   @default(true)
   /// Sólo rol OPTICA: óptica socia a la que pertenece el usuario (ve únicamente sus pedidos).
-  opticaId     String?  @map("optica_id")
-  optica       Optica?  @relation(fields: [opticaId], references: [id], onDelete: SetNull)
+  opticaId               String?   @map("optica_id")
+  optica                 Optica?   @relation(fields: [opticaId], references: [id], onDelete: SetNull)
   /// Prompt 6: login con Google (sub de Google), referidos y Plan Rivedere.
   googleId               String?   @unique @map("google_id")
   /// Código único para el link de referidos (/r/<codigo>).
@@ -48,8 +50,12 @@ model User {
   rivedereAvisadoEn      DateTime? @map("rivedere_avisado_en")
   /// Alta en el newsletter desde la cuenta.
   newsletter             Boolean   @default(false)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  /// B2B: dueño de la óptica (puede dar de alta otros usuarios desde /optica/usuarios).
+  opticaDueno            Boolean   @default(false) @map("optica_dueno")
+  /// B2B: contraseña provisoria; tiene que cambiarla antes de usar el panel.
+  debeCambiarPassword    Boolean   @default(false) @map("debe_cambiar_password")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   refreshTokens  RefreshToken[]
   carrito        Carrito?
@@ -240,44 +246,51 @@ model Coleccion {
 }
 
 model Producto {
-  id              String         @id @default(cuid())
-  nombre          String
-  slug            String         @unique
-  descripcion     String         @default("")
-  marcaId         String?        @map("marca_id")
-  marca           Marca?         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
-  categorias      Categoria[]
-  coleccionId     String?        @map("coleccion_id")
-  coleccion       Coleccion?     @relation(fields: [coleccionId], references: [id], onDelete: SetNull)
-  linea           Linea
-  material        Material?
-  forma           Forma?
-  genero          Genero         @default(UNISEX)
-  calibreMm       Int?           @map("calibre_mm")
-  puenteMm        Int?           @map("puente_mm")
-  varillaMm       Int?           @map("varilla_mm")
-  precio          Decimal        @db.Decimal(12, 2)
-  precioLista     Decimal?       @map("precio_lista") @db.Decimal(12, 2)
-  permiteReceta   Boolean        @default(false) @map("permite_receta")
-  destacado       Boolean        @default(false)
+  id               String         @id @default(cuid())
+  nombre           String
+  slug             String         @unique
+  descripcion      String         @default("")
+  marcaId          String?        @map("marca_id")
+  marca            Marca?         @relation(fields: [marcaId], references: [id], onDelete: SetNull)
+  categorias       Categoria[]
+  coleccionId      String?        @map("coleccion_id")
+  coleccion        Coleccion?     @relation(fields: [coleccionId], references: [id], onDelete: SetNull)
+  linea            Linea
+  material         Material?
+  forma            Forma?
+  genero           Genero         @default(UNISEX)
+  calibreMm        Int?           @map("calibre_mm")
+  puenteMm         Int?           @map("puente_mm")
+  varillaMm        Int?           @map("varilla_mm")
+  precio           Decimal        @db.Decimal(12, 2)
+  precioLista      Decimal?       @map("precio_lista") @db.Decimal(12, 2)
+  /// B2B: precio a ópticas socias, sin IVA. Null = todavía sin precio mayorista. Nunca sale en la tienda.
+  precioMayorista  Decimal?       @map("precio_mayorista") @db.Decimal(12, 2)
+  /// Visibilidad por canal: tienda web (público) y canal mayorista (ópticas).
+  visibleTienda    Boolean        @default(true) @map("visible_tienda")
+  visibleMayorista Boolean        @default(true) @map("visible_mayorista")
+  permiteReceta    Boolean        @default(false) @map("permite_receta")
+  destacado        Boolean        @default(false)
   /// Etiqueta "Edición limitada" en la tienda.
-  edicionLimitada Boolean        @default(false) @map("edicion_limitada")
-  estado          EstadoProducto @default(BORRADOR)
-  seoTitle        String?        @map("seo_title")
-  seoDescription  String?        @map("seo_description")
+  edicionLimitada  Boolean        @default(false) @map("edicion_limitada")
+  estado           EstadoProducto @default(BORRADOR)
+  seoTitle         String?        @map("seo_title")
+  seoDescription   String?        @map("seo_description")
   /// Contador para "más vendidos" (lo actualizan los pedidos).
-  vendidos        Int            @default(0)
-  publicadoEn     DateTime?      @map("publicado_en")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  createdById     String?        @map("created_by_id")
-  updatedById     String?        @map("updated_by_id")
+  vendidos         Int            @default(0)
+  publicadoEn      DateTime?      @map("publicado_en")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  createdById      String?        @map("created_by_id")
+  updatedById      String?        @map("updated_by_id")
 
   variantes   Variante[]
   pedidoItems PedidoItem[]
 
   favoritos Favorito[]
+
   @@index([estado, linea])
+  @@index([estado, visibleTienda])
   @@index([marcaId])
   @@index([coleccionId])
   @@index([precio])
@@ -356,41 +369,45 @@ model PromoMensaje {
 /// Óptica socia: arma, entrega y ajusta los pedidos cerca del cliente.
 /// `nombre` es el nombre comercial; `activa` = activa / pausada (pausada no recibe pedidos nuevos).
 model Optica {
-  id                String   @id @default(cuid())
+  id                String        @id @default(cuid())
   nombre            String
-  slug              String   @unique
-  razonSocial       String?  @map("razon_social")
+  slug              String        @unique
+  razonSocial       String?       @map("razon_social")
   cuit              String?
   direccion         String
   localidad         String
   provincia         String
-  codigoPostal      String   @map("codigo_postal")
+  codigoPostal      String        @map("codigo_postal")
   lat               Float?
   lng               Float?
   /// Radio de cobertura (km) para la asignación automática.
-  radioKm           Float    @default(10) @map("radio_km")
+  radioKm           Float         @default(10) @map("radio_km")
   telefono          String?
   whatsapp          String?
   email             String?
   horarios          String?
   /// Óptico técnico responsable y su matrícula.
-  opticoResponsable String?  @map("optico_responsable")
+  opticoResponsable String?       @map("optico_responsable")
   matricula         String?
+  /// B2B: condición frente al IVA y habilitación municipal (archivo en R2).
+  condicionIva      CondicionIva? @map("condicion_iva")
+  habilitacionUrl   String?       @map("habilitacion_url")
   /// Comisión (%) que cobra la óptica sobre el total de cada pedido entregado.
-  comisionPct       Decimal  @default(0) @map("comision_pct") @db.Decimal(5, 2)
+  comisionPct       Decimal       @default(0) @map("comision_pct") @db.Decimal(5, 2)
   /// Pedidos que puede recibir por día (asignados ese día).
-  capacidadDiaria   Int      @default(20) @map("capacidad_diaria")
-  activa            Boolean  @default(true)
-  orden             Int      @default(0)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  createdById       String?  @map("created_by_id")
-  updatedById       String?  @map("updated_by_id")
+  capacidadDiaria   Int           @default(20) @map("capacidad_diaria")
+  activa            Boolean       @default(true)
+  orden             Int           @default(0)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  createdById       String?       @map("created_by_id")
+  updatedById       String?       @map("updated_by_id")
 
-  pedidos  Pedido[]
-  usuarios User[]
-  eventos  PedidoEvento[]
-  turnos   Turno[]
+  pedidos     Pedido[]
+  usuarios    User[]
+  eventos     PedidoEvento[]
+  turnos      Turno[]
+  solicitudes SolicitudOptica[]
 
   @@index([activa, provincia])
   @@index([codigoPostal])
@@ -491,15 +508,15 @@ model MensajeContacto {
 
 /// Carrito persistido por usuario (se sincroniza con el localStorage del navegador).
 model Carrito {
-  id        String   @id @default(cuid())
-  userId    String   @unique @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items     Json     @default("[]")
-  cupon     String?
+  id         String    @id @default(cuid())
+  userId     String    @unique @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      Json      @default("[]")
+  cupon      String?
   /// Carrito abandonado: emails enviados a la hora y a las 24 horas de la última modificación.
   aviso1hEn  DateTime? @map("aviso_1h_en")
   aviso24hEn DateTime? @map("aviso_24h_en")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   @@index([updatedAt])
   @@map("carritos")
@@ -561,48 +578,48 @@ model Promocion {
 
 /// Configuración comercial editable desde el admin (una sola fila, id "default").
 model ConfigTienda {
-  id                        String   @id @default("default")
+  id                          String   @id @default("default")
   /// Transferencia bancaria
-  transferenciaHabilitada   Boolean  @default(true) @map("transferencia_habilitada")
-  cbu                       String?
-  alias                     String?
-  titularCuenta             String?  @map("titular_cuenta")
-  banco                     String?
+  transferenciaHabilitada     Boolean  @default(true) @map("transferencia_habilitada")
+  cbu                         String?
+  alias                       String?
+  titularCuenta               String?  @map("titular_cuenta")
+  banco                       String?
   /// Descuento (%) por pagar con transferencia.
-  descuentoTransferencia    Decimal  @default(0) @map("descuento_transferencia") @db.Decimal(5, 2)
+  descuentoTransferencia      Decimal  @default(0) @map("descuento_transferencia") @db.Decimal(5, 2)
   /// Horas que se mantiene reservado el stock de un pedido por transferencia.
-  transferenciaHorasReserva Int      @default(48) @map("transferencia_horas_reserva")
+  transferenciaHorasReserva   Int      @default(48) @map("transferencia_horas_reserva")
   /// Mercado Pago (además necesita credenciales en el entorno)
-  mpHabilitado              Boolean  @default(true) @map("mp_habilitado")
-  mpBilleteraHabilitada     Boolean  @default(false) @map("mp_billetera_habilitada")
+  mpHabilitado                Boolean  @default(true) @map("mp_habilitado")
+  mpBilleteraHabilitada       Boolean  @default(false) @map("mp_billetera_habilitada")
   /// Cuotas sin interés: general y por línea ({"MULTIFOCAL": 12}).
-  cuotasGeneral             Int      @default(6) @map("cuotas_general")
-  cuotasPorLinea            Json     @default("{}") @map("cuotas_por_linea")
+  cuotasGeneral               Int      @default(6) @map("cuotas_general")
+  cuotasPorLinea              Json     @default("{}") @map("cuotas_por_linea")
   /// Envío a domicilio desde la óptica.
-  costoEnvio                Decimal  @default(0) @map("costo_envio") @db.Decimal(12, 2)
+  costoEnvio                  Decimal  @default(0) @map("costo_envio") @db.Decimal(12, 2)
   /// Asignación: horas hábiles que tiene la óptica para aceptar antes de pasar a la siguiente.
-  plazoAceptacionHoras      Int      @default(4) @map("plazo_aceptacion_horas")
+  plazoAceptacionHoras        Int      @default(4) @map("plazo_aceptacion_horas")
   /// Horario hábil (hora local de Argentina) para contar el plazo. Sábado opcional.
-  horaHabilDesde            Int      @default(9) @map("hora_habil_desde")
-  horaHabilHasta            Int      @default(18) @map("hora_habil_hasta")
-  sabadoHabil               Boolean  @default(true) @map("sabado_habil")
+  horaHabilDesde              Int      @default(9) @map("hora_habil_desde")
+  horaHabilHasta              Int      @default(18) @map("hora_habil_hasta")
+  sabadoHabil                 Boolean  @default(true) @map("sabado_habil")
   /// Prompt 6: datos fiscales (footer y emails).
-  razonSocial               String?  @map("razon_social")
-  cuit                      String?
-  domicilioFiscal           String?  @map("domicilio_fiscal")
-  condicionIva              String?  @map("condicion_iva")
-  ingresosBrutos            String?  @map("ingresos_brutos")
-  inicioActividades         String?  @map("inicio_actividades")
-  emailContacto             String?  @map("email_contacto")
+  razonSocial                 String?  @map("razon_social")
+  cuit                        String?
+  domicilioFiscal             String?  @map("domicilio_fiscal")
+  condicionIva                String?  @map("condicion_iva")
+  ingresosBrutos              String?  @map("ingresos_brutos")
+  inicioActividades           String?  @map("inicio_actividades")
+  emailContacto               String?  @map("email_contacto")
   /// Plan Rivedere: meses desde la última compra de recetado/multifocal y descuento del cupón de recambio.
-  rivedereMeses             Int      @default(24) @map("rivedere_meses")
-  rivedereDescuentoPct      Decimal  @default(15) @map("rivedere_descuento_pct") @db.Decimal(5, 2)
+  rivedereMeses               Int      @default(24) @map("rivedere_meses")
+  rivedereDescuentoPct        Decimal  @default(15) @map("rivedere_descuento_pct") @db.Decimal(5, 2)
   /// Referidos: descuento del cupón que reciben el que refiere y el referido cuando el referido compra.
-  referidoDescuentoPct      Decimal  @default(10) @map("referido_descuento_pct") @db.Decimal(5, 2)
+  referidoDescuentoPct        Decimal  @default(10) @map("referido_descuento_pct") @db.Decimal(5, 2)
   /// Carrito abandonado (1 h y 24 h).
-  carritoAbandonadoHabilitado Boolean @default(true) @map("carrito_abandonado_habilitado")
-  updatedAt                 DateTime @updatedAt @map("updated_at")
-  updatedById               String?  @map("updated_by_id")
+  carritoAbandonadoHabilitado Boolean  @default(true) @map("carrito_abandonado_habilitado")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+  updatedById                 String?  @map("updated_by_id")
 
   @@map("config_tienda")
 }
@@ -1115,4 +1132,90 @@ model Redireccion {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@map("redirecciones")
+}
+
+// ============================================================
+// B2B 1: alta de ópticas y precios mayoristas
+// ============================================================
+
+enum CondicionIva {
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTO
+  EXENTO
+}
+
+enum EstadoSolicitudOptica {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+/// Solicitud de alta de una óptica al programa de socias (/opticas/sumate). Al aprobarla se crea o vincula la
+/// Optica y un usuario OPTICA dueño con contraseña provisoria.
+model SolicitudOptica {
+  id                 String                @id @default(cuid())
+  razonSocial        String                @map("razon_social")
+  nombreComercial    String                @map("nombre_comercial")
+  /// CUIT normalizado a 11 dígitos (sin guiones).
+  cuit               String
+  condicionIva       CondicionIva          @map("condicion_iva")
+  direccion          String
+  localidad          String
+  provincia          String
+  codigoPostal       String                @map("codigo_postal")
+  telefono           String
+  whatsapp           String?
+  email              String
+  opticoResponsable  String                @map("optico_responsable")
+  matricula          String
+  habilitacionUrl    String                @map("habilitacion_url")
+  habilitacionNombre String?               @map("habilitacion_nombre")
+  aceptaTerminosEn   DateTime              @map("acepta_terminos_en")
+  ip                 String?
+  estado             EstadoSolicitudOptica @default(PENDIENTE)
+  motivoRechazo      String?               @map("motivo_rechazo")
+  /// Óptica creada o vinculada al aprobar.
+  opticaId           String?               @map("optica_id")
+  optica             Optica?               @relation(fields: [opticaId], references: [id], onDelete: SetNull)
+  /// Usuario OPTICA creado (o existente) al aprobar.
+  usuarioId          String?               @map("usuario_id")
+  resueltoPorId      String?               @map("resuelto_por_id")
+  resueltoEn         DateTime?             @map("resuelto_en")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  @@index([estado, createdAt])
+  @@index([cuit])
+  @@map("solicitudes_optica")
+}
+
+enum CampoPrecio {
+  PRECIO
+  PRECIO_MAYORISTA
+}
+
+enum AlcancePrecio {
+  TODOS
+  CATEGORIA
+  MARCA
+  COLECCION
+}
+
+/// Auditoría de las actualizaciones masivas de precios por porcentaje (quién, cuándo, alcance y antes/después).
+model ActualizacionPrecio {
+  id                 String        @id @default(cuid())
+  campo              CampoPrecio
+  porcentaje         Decimal       @db.Decimal(7, 2)
+  alcance            AlcancePrecio
+  alcanceId          String?       @map("alcance_id")
+  alcanceNombre      String?       @map("alcance_nombre")
+  productosAfectados Int           @map("productos_afectados")
+  /// [{ id, nombre, antes, despues }]
+  detalle            Json
+  usuarioId          String?       @map("usuario_id")
+  usuarioNombre      String?       @map("usuario_nombre")
+  createdAt          DateTime      @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("actualizaciones_precio")
 }

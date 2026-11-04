@@ -33,6 +33,9 @@ export interface ProductoFormState {
   varillaMm: string;
   precio: string;
   precioLista: string;
+  precioMayorista: string;
+  visibleTienda: boolean;
+  visibleMayorista: boolean;
   permiteReceta: boolean;
   destacado: boolean;
   edicionLimitada: boolean;
@@ -105,6 +108,9 @@ export function estadoInicial(p?: Producto | null): ProductoFormState {
       varillaMm: '',
       precio: '',
       precioLista: '',
+      precioMayorista: '',
+      visibleTienda: true,
+      visibleMayorista: true,
       permiteReceta: false,
       destacado: false,
       edicionLimitada: false,
@@ -131,6 +137,9 @@ export function estadoInicial(p?: Producto | null): ProductoFormState {
     varillaMm: p.medidas.varillaMm?.toString() ?? '',
     precio: String(p.precio),
     precioLista: p.precioLista?.toString() ?? '',
+    precioMayorista: p.precioMayorista?.toString() ?? '',
+    visibleTienda: p.visibleTienda ?? true,
+    visibleMayorista: p.visibleMayorista ?? true,
     permiteReceta: p.permiteReceta,
     destacado: p.destacado,
     edicionLimitada: p.edicionLimitada,
@@ -161,6 +170,9 @@ export function productoPayload(s: ProductoFormState) {
     varillaMm: intOrNull(s.varillaMm),
     precio: Number(s.precio),
     precioLista: s.precioLista.trim() === '' ? null : Number(s.precioLista),
+    precioMayorista: s.precioMayorista.trim() === '' ? null : Number(s.precioMayorista),
+    visibleTienda: s.visibleTienda,
+    visibleMayorista: s.visibleMayorista,
     permiteReceta: s.permiteReceta,
     destacado: s.destacado,
     edicionLimitada: s.edicionLimitada,
@@ -194,4 +206,27 @@ export function variantePayload(v: VarianteForm, orden: number) {
 
 export function bajoStock(v: VarianteForm): boolean {
   return Number(v.stock || 0) < Number(v.stockMinimo || 0);
+}
+
+/** IVA general (21%): el precio web lo incluye; el mayorista se carga sin IVA. */
+export const IVA = 0.21;
+
+export interface Margen {
+  /** Precio web sin IVA. */
+  webSinIva: number;
+  /** Ganancia de la óptica por unidad, sin IVA (web sin IVA - mayorista). */
+  ganancia: number;
+  /** Margen sobre el precio de venta sin IVA (%). */
+  margenPct: number;
+}
+
+/** Margen de la óptica si compra al precio mayorista y vende al precio web. null si falta algún precio. */
+export function calcularMargen(precioWeb: string, precioMayorista: string): Margen | null {
+  if (precioWeb.trim() === '' || precioMayorista.trim() === '') return null;
+  const web = Number(precioWeb);
+  const may = Number(precioMayorista);
+  if (!(web > 0) || Number.isNaN(may) || may < 0) return null;
+  const webSinIva = web / (1 + IVA);
+  const ganancia = webSinIva - may;
+  return { webSinIva, ganancia, margenPct: (ganancia / webSinIva) * 100 };
 }

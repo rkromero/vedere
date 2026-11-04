@@ -1,6 +1,7 @@
 // Feeds de productos (prompt 6): Google Shopping (RSS 2.0 + namespace g:) y Meta Catalog (CSV).
 // Una entrada por variante activa de producto publicado; item_group_id agrupa las variantes del producto.
 // Se cachean 5 minutos en memoria (los precios y el stock no cambian a cada segundo).
+import { EN_TIENDA } from './canales.js';
 import { prisma } from '@vedere/db';
 import type { Env } from '../env.js';
 import { dec } from './serialize.js';
@@ -36,7 +37,7 @@ const ars = (n: number) => `${n.toFixed(2)} ARS`;
 export async function itemsFeed(env: Env): Promise<ItemFeed[]> {
   const web = env.WEB_URL.replace(/\/$/, '');
   const productos = await prisma.producto.findMany({
-    where: { estado: 'PUBLICADO' },
+    where: { ...EN_TIENDA },
     include: {
       marca: { select: { nombre: true } },
       categorias: { select: { nombre: true }, take: 1 },

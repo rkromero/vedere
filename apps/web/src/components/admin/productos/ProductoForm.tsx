@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { cn } from '@vedere/ui';
 import { ApiError, api, errorMessage } from '@/lib/api-client';
 import { LABELS, formatFecha, options } from '@/lib/format';
 import type { EstadoProducto, Forma, Genero, Linea, Material } from '@/lib/format';
@@ -22,7 +23,7 @@ import {
   estadoTone,
 } from '@/components/admin/ui';
 import { useToast } from '@/components/admin/toast';
-import { estadoInicial, productoPayload, slugify, variantePayload } from './form-types';
+import { calcularMargen, estadoInicial, productoPayload, slugify, variantePayload } from './form-types';
 import type { ProductoFormState, VarianteForm } from './form-types';
 import { VariantesTab } from './VariantesTab';
 import { ImagenesTab } from './ImagenesTab';
@@ -53,6 +54,12 @@ function validar(s: ProductoFormState): Record<string, string> {
   if (!s.nombre.trim()) e.nombre = 'Ingresá el nombre del producto';
   if (s.precio.trim() === '' || Number.isNaN(Number(s.precio)) || Number(s.precio) < 0) {
     e.precio = 'Ingresá un precio válido';
+  }
+  if (
+    s.precioMayorista.trim() !== '' &&
+    (Number.isNaN(Number(s.precioMayorista)) || Number(s.precioMayorista) < 0)
+  ) {
+    e.precioMayorista = 'Ingresá un precio mayorista válido';
   }
   if (s.precioLista.trim() !== '' && Number(s.precioLista) < Number(s.precio)) {
     e.precioLista = 'El precio de lista debería ser mayor o igual al precio de venta';
@@ -535,6 +542,27 @@ export function ProductoForm({
                   checked={state.edicionLimitada}
                   onChange={(e) => patch({ edicionLimitada: e.target.checked })}
                 />
+                <fieldset className="space-y-2 border-t border-negro/10 pt-4">
+                  <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-gris-medio">
+                    Visible en
+                  </legend>
+                  <Checkbox
+                    label="Tienda web (público)"
+                    checked={state.visibleTienda}
+                    onChange={(e) => patch({ visibleTienda: e.target.checked })}
+                  />
+                  <Checkbox
+                    label="Canal mayorista (ópticas socias)"
+                    checked={state.visibleMayorista}
+                    onChange={(e) => patch({ visibleMayorista: e.target.checked })}
+                  />
+                  {!state.visibleTienda && !state.visibleMayorista && (
+                    <p className="text-xs text-carey">No se ve en ningún canal.</p>
+                  )}
+                  {!state.visibleTienda && state.visibleMayorista && (
+                    <p className="text-xs text-gris-medio">Exclusivo para ópticas: no aparece en la tienda.</p>
+                  )}
+                </fieldset>
                 {esEdicion && producto.estado === 'PUBLICADO' && (
                   <p className="rounded-lg bg-gris-claro px-3 py-2 text-xs text-negro/80">
                     Ver en tienda:{' '}
@@ -551,22 +579,39 @@ export function ProductoForm({
               </div>
             </Card>
 
-            <Card title="Precio">
+            <Card title="Precios por canal">
               <div className="space-y-4">
-                <Field label="Precio de venta (ARS)" required error={errors.precio}>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={state.precio}
-                    onChange={(e) => patch({ precio: e.target.value })}
-                    placeholder="89900"
-                  />
-                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Precio web (ARS, con IVA)" required error={errors.precio}>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={state.precio}
+                      onChange={(e) => patch({ precio: e.target.value })}
+                      placeholder="89900"
+                    />
+                  </Field>
+                  <Field
+                    label="Precio mayorista (ARS, sin IVA)"
+                    error={errors.precioMayorista}
+                    hint="Lo ven sólo las ópticas socias."
+                  >
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={state.precioMayorista}
+                      onChange={(e) => patch({ precioMayorista: e.target.value })}
+                      placeholder="37000"
+                    />
+                  </Field>
+                </div>
+                <MargenOptica precio={state.precio} precioMayorista={state.precioMayorista} />
                 <Field
-                  label="Precio de lista (ARS)"
+                  label="Precio de lista web (ARS)"
                   error={errors.precioLista}
-                  hint="Opcional. Se muestra tachado si es mayor al precio de venta."
+                  hint="Opcional. Se muestra tachado si es mayor al precio web."
                 >
                   <Input
                     type="number"
@@ -705,6 +750,43 @@ export function ProductoForm({
         danger
         loading={eliminando}
       />
+    </div>
+  );
+}
+
+const ars = (n: number) =>
+  n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+
+/** Margen de la óptica: precio web sin IVA contra el precio mayorista. */
+function MargenOptica({ precio, precioMayorista }: { precio: string; precioMayorista: string }) {
+  const m = calcularMargen(precio, precioMayorista);
+  if (!m) {
+    return (
+      <p className="rounded-lg bg-gris-claro px-3 py-2 text-xs text-gris-medio" data-testid="margen-optica">
+        Cargá los dos precios para ver el margen de la óptica.
+      </p>
+    );
+  }
+  const negativo = m.ganancia < 0;
+  const filas: Array<[string, string]> = [
+    ['Precio web sin IVA', ars(m.webSinIva)],
+    ['Ganancia de la óptica', ars(m.ganancia)],
+    ['Margen de la óptica', `${m.margenPct.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`],
+  ];
+  return (
+    <div
+      className={cn('rounded-lg px-3 py-2 text-xs', negativo ? 'bg-carey/10 text-carey' : 'bg-gris-claro')}
+      data-testid="margen-optica"
+    >
+      <dl className="space-y-1">
+        {filas.map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-3">
+            <dt className={negativo ? '' : 'text-gris-medio'}>{k}</dt>
+            <dd className="font-semibold tabular-nums">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {negativo && <p className="mt-1.5">El mayorista supera al precio web sin IVA: la óptica pierde plata.</p>}
     </div>
   );
 }

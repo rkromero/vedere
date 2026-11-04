@@ -18,6 +18,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Pr
     categoriaId: sp.categoriaId,
     coleccionId: sp.coleccionId,
     bajoStock: sp.bajoStock,
+    canal: sp.canal,
     sort: sp.sort,
     page: sp.page,
     pageSize: '20',

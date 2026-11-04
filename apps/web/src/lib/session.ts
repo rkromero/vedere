@@ -16,6 +16,9 @@ export interface SessionUser {
   createdAt: string;
   opticaId?: string | null;
   optica?: { id: string; nombre: string; slug: string } | null;
+  /** B2B: dueño de la óptica (administra usuarios) y contraseña provisoria pendiente de cambio. */
+  opticaDueno?: boolean;
+  debeCambiarPassword?: boolean;
 }
 
 export const STAFF_ROLES: Rol[] = ['ADMIN', 'OPERADOR'];

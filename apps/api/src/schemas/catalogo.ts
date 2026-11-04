@@ -114,6 +114,10 @@ export const productoBase = z.object({
   varillaMm: z.number().int().min(80).max(180).nullable().optional(),
   precio: z.number().nonnegative('El precio no puede ser negativo'),
   precioLista: z.number().nonnegative().nullable().optional(),
+  /** Precio a ópticas socias, sin IVA (null = sin definir). */
+  precioMayorista: z.number().nonnegative('El precio mayorista no puede ser negativo').nullable().optional(),
+  visibleTienda: z.boolean().default(true),
+  visibleMayorista: z.boolean().default(true),
   permiteReceta: z.boolean().default(false),
   destacado: z.boolean().default(false),
   edicionLimitada: z.boolean().default(false),
@@ -126,6 +130,27 @@ export const productoInput = productoBase.extend({
   variantes: z.array(varianteInput).default([]),
 });
 export const productoUpdate = partialSinDefaults(productoBase.shape);
+
+/** Actualización masiva de precios por porcentaje (auditada en actualizaciones_precio). */
+export const actualizarPreciosInput = z
+  .object({
+    campo: z.enum(['PRECIO', 'PRECIO_MAYORISTA'], { error: 'Elegí qué precio actualizar' }),
+    porcentaje: z
+      .number({ error: 'Ingresá el porcentaje' })
+      .min(-90, 'El porcentaje no puede bajar más de 90%')
+      .max(500, 'El porcentaje es demasiado alto')
+      .refine((v) => v !== 0, 'El porcentaje no puede ser 0'),
+    alcance: z.enum(['TODOS', 'CATEGORIA', 'MARCA', 'COLECCION']),
+    alcanceId: idSchema.nullable().optional(),
+    /** Redondeo del resultado: sin decimales (1), a la decena (10) o a la centena (100). */
+    redondeo: z.union([z.literal(0.01), z.literal(1), z.literal(10), z.literal(100)]).default(1),
+    /** true = sólo calcula y devuelve la vista previa, sin guardar. */
+    simular: z.boolean().default(false),
+  })
+  .refine((v) => v.alcance === 'TODOS' || !!v.alcanceId, {
+    message: 'Elegí la categoría, marca o colección',
+    path: ['alcanceId'],
+  });
 
 export const productoBulk = z.object({
   ids: z.array(idSchema).min(1, 'Seleccioná al menos un producto'),
@@ -149,6 +174,8 @@ export const productoListQuery = z.object({
   genero: z.enum(GENEROS).optional(),
   destacado: z.enum(['true', 'false']).optional(),
   bajoStock: z.enum(['true', 'false']).optional(),
+  /** Canal: visibles en la tienda, en el mayorista, sólo mayorista, o sin precio mayorista cargado. */
+  canal: z.enum(['tienda', 'mayorista', 'solo_mayorista', 'sin_mayorista']).optional(),
   sort: z
     .enum(['reciente', 'nombre', 'precio_asc', 'precio_desc', 'vendidos', 'actualizado'])
     .default('actualizado'),

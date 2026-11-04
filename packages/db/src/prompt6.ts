@@ -207,6 +207,50 @@ export const PLANTILLAS_EMAIL_DEFAULT: PlantillaEmailDefault[] = [
     cuerpo: 'Vas a recibir novedades, lanzamientos y promos. Sin spam. Podés darte de baja cuando quieras desde el link al pie de cada email.',
     ctaLabel: 'Ver novedades',
   },
+  // ---------- B2B: alta de ópticas socias ----------
+  {
+    tipo: 'SOLICITUD_OPTICA_RECIBIDA',
+    nombre: 'Óptica: solicitud recibida',
+    descripcion: 'A la óptica, apenas envía la solicitud desde /opticas/sumate.',
+    variables: ['nombre', 'optica', 'razonSocial', 'cuit'],
+    asunto: 'Recibimos la solicitud de {{optica}}',
+    titulo: 'Recibimos tu solicitud',
+    cuerpo:
+      'Hola {{nombre}}, gracias por querer sumar **{{optica}}** a la red de ópticas socias Vedere.\n\nVamos a revisar los datos y la habilitación en los próximos días hábiles. Cuando la aprobemos te llega un email con el acceso al panel.',
+  },
+  {
+    tipo: 'SOLICITUD_OPTICA_APROBADA',
+    nombre: 'Óptica: solicitud aprobada (acceso)',
+    descripcion: 'Al aprobar la solicitud: usuario y contraseña provisoria del panel /optica.',
+    variables: ['nombre', 'optica', 'email', 'password', 'url'],
+    asunto: '{{optica}} ya es óptica socia Vedere',
+    titulo: '¡Bienvenidos a la red Vedere!',
+    cuerpo:
+      'Hola {{nombre}}, aprobamos la solicitud de **{{optica}}**. Ya podés entrar al panel de ópticas socias.\n\n- Usuario: {{email}}\n- Contraseña provisoria: {{password}}\n\nAl ingresar por primera vez te vamos a pedir que elijas una contraseña nueva. Desde el panel también podés dar de alta a las personas de tu equipo.',
+    ctaLabel: 'Entrar al panel',
+  },
+  {
+    tipo: 'SOLICITUD_OPTICA_RECHAZADA',
+    nombre: 'Óptica: solicitud rechazada',
+    descripcion: 'Al rechazar la solicitud, con el motivo.',
+    variables: ['nombre', 'optica', 'motivo', 'url'],
+    asunto: 'Sobre la solicitud de {{optica}}',
+    titulo: 'No pudimos aprobar la solicitud',
+    cuerpo:
+      'Hola {{nombre}}, revisamos la solicitud de **{{optica}}** y por ahora no pudimos aprobarla.\n\nMotivo: {{motivo}}\n\nSi podés resolverlo, mandá una solicitud nueva o respondé este email.',
+    ctaLabel: 'Enviar una solicitud nueva',
+  },
+  {
+    tipo: 'OPTICA_USUARIO_NUEVO',
+    nombre: 'Óptica: alta de usuario del equipo',
+    descripcion: 'Cuando el dueño de la óptica da de alta a otra persona desde /optica/usuarios.',
+    variables: ['nombre', 'optica', 'email', 'password', 'url'],
+    asunto: 'Tu acceso al panel de {{optica}} en Vedere',
+    titulo: 'Ya tenés acceso al panel',
+    cuerpo:
+      'Hola {{nombre}}, te dieron acceso al panel de ópticas socias de **{{optica}}**.\n\n- Usuario: {{email}}\n- Contraseña provisoria: {{password}}\n\nAl ingresar por primera vez te vamos a pedir que elijas una contraseña nueva.',
+    ctaLabel: 'Entrar al panel',
+  },
 ];
 
 export interface PaginaLegalDefault {
@@ -308,5 +352,37 @@ Sesión, carrito y preferencias. Sin ellas el sitio no funciona; no requieren co
 ## Cookies de medición y marketing
 
 Google Analytics 4, Google Tag Manager y Meta Pixel. Sólo se cargan si aceptás el banner de cookies. Podés cambiar tu elección en cualquier momento desde el pie de página.`,
+  },
+  {
+    slug: 'programa-opticas',
+    titulo: 'Términos del programa de ópticas socias',
+    intro: 'Condiciones para sumarse a la red de ópticas socias Vedere y comprar al por mayor.',
+    contenido: `## Quién puede sumarse
+
+Ópticas habilitadas por la autoridad sanitaria de su jurisdicción, con un óptico técnico matriculado como responsable y CUIT activo. Vedere revisa cada solicitud y puede aprobarla o rechazarla indicando el motivo.
+
+## Qué datos pedimos
+
+Razón social, nombre comercial, CUIT y condición frente al IVA, dirección del local, teléfono, email, nombre y matrícula del óptico responsable y la habilitación del local. La óptica declara que los datos son verdaderos y se compromete a mantenerlos actualizados.
+
+## Acceso al panel
+
+Al aprobar la solicitud enviamos un usuario y una contraseña provisoria para el panel de ópticas socias, que hay que cambiar en el primer ingreso. El dueño de la cuenta puede dar de alta a las personas de su equipo y es responsable del uso que hagan del panel.
+
+## Precios mayoristas
+
+Los precios mayoristas se informan sin IVA, son confidenciales y pueden cambiar sin previo aviso. No se pueden publicar ni compartir con terceros.
+
+## Pedidos de clientes de la tienda
+
+Si la óptica recibe pedidos de la tienda web, se compromete a aceptarlos o rechazarlos dentro del plazo informado en el panel, armarlos con los lentes indicados en la receta y entregarlos y ajustarlos sin cargo para el cliente. Cobra la comisión acordada por cada pedido entregado, según la liquidación mensual.
+
+## Datos de los clientes
+
+La óptica usa los datos de los clientes de Vedere sólo para atender sus pedidos y cumple la Ley 25.326 de protección de datos personales.
+
+## Baja
+
+Cualquiera de las partes puede terminar la relación avisando por email. Vedere puede pausar o dar de baja a una óptica que no cumpla estos términos.`,
   },
 ];

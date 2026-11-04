@@ -1,7 +1,6 @@
 // Checkout público: configuración, cotización del carrito (promos + stock), óptica asignada,
 // autocompletado/geocodificación de direcciones, receta (archivo y recetas guardadas), creación del
 // pedido, consulta del pedido, comprobante de transferencia y webhook de Mercado Pago.
-import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import { Errors } from '../lib/errors.js';
@@ -19,11 +18,10 @@ import {
   serializeSolicitud,
 } from '../lib/pedidos.js';
 import { crearSolicitud } from '../lib/solicitudes.js';
-import { putObject } from '../lib/storage.js';
+import { guardarArchivo } from '../lib/archivos.js';
 import { parse } from '../lib/validate.js';
 import { serializeOptica } from './catalogo.js';
 import {
-  RECETA_TIPOS,
   buscarPedidoQuery,
   cotizarInput,
   geocodificarInput,
@@ -36,33 +34,6 @@ import {
 
 const formRateLimit = { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } };
 const consultaRateLimit = { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } };
-
-const EXT_BY_TYPE: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/heic': 'heic',
-  'application/pdf': 'pdf',
-};
-
-/** Lee un archivo multipart (foto o PDF) y lo guarda en R2 / disco. */
-async function guardarArchivo(
-  app: Parameters<FastifyPluginAsync>[0],
-  file: { mimetype: string; filename: string; toBuffer: () => Promise<Buffer>; file: { truncated: boolean } },
-  folder: string,
-) {
-  if (!RECETA_TIPOS.includes(file.mimetype as (typeof RECETA_TIPOS)[number])) {
-    throw Errors.badRequest('Formato no permitido: subí una foto (JPG, PNG, WebP, HEIC) o un PDF');
-  }
-  const body = await file.toBuffer();
-  if (file.file.truncated || body.length > app.env.MAX_UPLOAD_MB * 1024 * 1024) {
-    throw Errors.badRequest(`El archivo supera los ${app.env.MAX_UPLOAD_MB} MB`);
-  }
-  const ext = EXT_BY_TYPE[file.mimetype] ?? 'bin';
-  const key = `${folder}/${randomUUID()}.${ext}`;
-  const url = await putObject(app.env, { key, body, contentType: file.mimetype });
-  return { url, nombre: file.filename.slice(0, 200), tamano: body.length, tipo: file.mimetype };
-}
 
 const checkoutRoutes: FastifyPluginAsync = async (app) => {
   // request.user si hay sesión; si no, anónimo.
@@ -121,7 +92,7 @@ const checkoutRoutes: FastifyPluginAsync = async (app) => {
   app.post('/recetas/archivo', formRateLimit, async (request, reply) => {
     const file = await request.file();
     if (!file) throw Errors.badRequest('Adjuntá la foto o el PDF de tu receta');
-    const guardado = await guardarArchivo(app, file, 'recetas');
+    const guardado = await guardarArchivo(app.env, file, 'recetas', 'tu receta');
     return reply.status(201).send(guardado);
   });
 
@@ -183,7 +154,7 @@ const checkoutRoutes: FastifyPluginAsync = async (app) => {
     if (p.estadoPago === 'APROBADO') throw Errors.badRequest('El pago de este pedido ya fue confirmado');
     const file = await request.file();
     if (!file) throw Errors.badRequest('Adjuntá el comprobante');
-    const guardado = await guardarArchivo(app, file, 'comprobantes');
+    const guardado = await guardarArchivo(app.env, file, 'comprobantes', 'el comprobante');
     const pago = p.pagos[p.pagos.length - 1];
     const data = {
       comprobanteUrl: guardado.url,

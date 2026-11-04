@@ -93,6 +93,11 @@ export interface Producto {
   medidas: { calibreMm: number | null; puenteMm: number | null; varillaMm: number | null };
   precio: number;
   precioLista: number | null;
+  /** Sólo en el admin (las respuestas públicas nunca lo incluyen). Precio a ópticas, sin IVA. */
+  precioMayorista?: number | null;
+  /** Sólo en el admin: visibilidad por canal. */
+  visibleTienda?: boolean;
+  visibleMayorista?: boolean;
   permiteReceta: boolean;
   destacado: boolean;
   edicionLimitada: boolean;
@@ -193,6 +198,9 @@ export interface OpticaAdmin {
   matricula: string | null;
   comisionPct: number;
   capacidadDiaria: number;
+  // B2B 1
+  condicionIva?: CondicionIva | null;
+  habilitacionUrl?: string | null;
   /** Pedidos asignados hoy (lo calcula la API en el listado). */
   asignadosHoy?: number;
   usuarios?: number;
@@ -265,4 +273,40 @@ export interface SuscripcionNewsletter {
   email: string;
   origen: string | null;
   createdAt: string;
+}
+
+// ---------- B2B 1: alta de ópticas ----------
+export type CondicionIva = 'RESPONSABLE_INSCRIPTO' | 'MONOTRIBUTO' | 'EXENTO';
+export type EstadoSolicitudOptica = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+
+export interface SolicitudOptica {
+  id: string;
+  razonSocial: string;
+  nombreComercial: string;
+  cuit: string;
+  condicionIva: CondicionIva;
+  direccion: string;
+  localidad: string;
+  provincia: string;
+  codigoPostal: string;
+  telefono: string;
+  whatsapp: string | null;
+  email: string;
+  opticoResponsable: string;
+  matricula: string;
+  habilitacionUrl: string;
+  habilitacionNombre: string | null;
+  aceptaTerminosEn: string;
+  estado: EstadoSolicitudOptica;
+  motivoRechazo: string | null;
+  opticaId: string | null;
+  optica: { id: string; nombre: string; slug: string } | null;
+  usuarioId: string | null;
+  resueltoEn: string | null;
+  createdAt: string;
+}
+
+export interface SolicitudOpticaDetalle extends SolicitudOptica {
+  coincidencias: Array<{ id: string; nombre: string; slug: string; localidad: string; activa: boolean }>;
+  usuarioExistente: { id: string; rol: string; opticaId: string | null; activo: boolean } | null;
 }

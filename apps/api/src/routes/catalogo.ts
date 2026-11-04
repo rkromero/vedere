@@ -1,5 +1,6 @@
 // Endpoints públicos de la tienda: catálogo (sólo productos PUBLICADOS), búsqueda, promos,
 // ópticas socias, cupones, newsletter, avisos de stock y contacto.
+import { EN_TIENDA } from '../lib/canales.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
@@ -53,7 +54,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
   // ------------------------------------------------------------------
   app.get('/productos', async (request) => {
     const q = parse(listQuery, request.query);
-    const and: Prisma.ProductoWhereInput[] = [{ estado: 'PUBLICADO' }];
+    const and: Prisma.ProductoWhereInput[] = [{ ...EN_TIENDA }];
 
     if (q.q) {
       const terms = q.q.split(/\s+/).filter(Boolean).slice(0, 5);
@@ -110,7 +111,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
 
   app.get<{ Params: { slug: string } }>('/productos/:slug', async (request) => {
     const p = await prisma.producto.findFirst({
-      where: { slug: request.params.slug, estado: 'PUBLICADO' },
+      where: { slug: request.params.slug, ...EN_TIENDA },
       include: productoInclude,
     });
     if (!p) throw Errors.notFound('Producto no encontrado');
@@ -120,7 +121,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
   /** Relacionados: misma colección o forma o línea, los más vendidos primero. */
   app.get<{ Params: { slug: string } }>('/productos/:slug/relacionados', async (request) => {
     const p = await prisma.producto.findFirst({
-      where: { slug: request.params.slug, estado: 'PUBLICADO' },
+      where: { slug: request.params.slug, ...EN_TIENDA },
       select: { id: true, linea: true, forma: true, coleccionId: true },
     });
     if (!p) throw Errors.notFound('Producto no encontrado');
@@ -128,7 +129,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
     if (p.forma) or.unshift({ forma: p.forma });
     if (p.coleccionId) or.unshift({ coleccionId: p.coleccionId });
     const items = await prisma.producto.findMany({
-      where: { estado: 'PUBLICADO', id: { not: p.id }, OR: or },
+      where: { ...EN_TIENDA, id: { not: p.id }, OR: or },
       orderBy: [{ vendidos: 'desc' }, { publicadoEn: 'desc' }],
       include: productoInclude,
       take: 8,
@@ -149,7 +150,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
     const [productos, categorias, colecciones] = await Promise.all([
       prisma.producto.findMany({
         where: {
-          estado: 'PUBLICADO',
+          ...EN_TIENDA,
           OR: [
             { nombre: contains },
             { marca: { nombre: contains } },
@@ -194,7 +195,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
     const items = await prisma.categoria.findMany({
       where: { activa: true },
       orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
-      include: { _count: { select: { productos: { where: { estado: 'PUBLICADO' } } } } },
+      include: { _count: { select: { productos: { where: { ...EN_TIENDA } } } } },
     });
     const flat = items.map(({ _count, createdById: _c, updatedById: _u, ...c }) => ({
       ...c,
@@ -231,9 +232,9 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
         bannerUrl: true,
         vigenciaDesde: true,
         vigenciaHasta: true,
-        _count: { select: { productos: { where: { estado: 'PUBLICADO' } } } },
+        _count: { select: { productos: { where: { ...EN_TIENDA } } } },
         productos: {
-          where: { estado: 'PUBLICADO' },
+          where: { ...EN_TIENDA },
           orderBy: [{ destacado: 'desc' }, { vendidos: 'desc' }],
           take: 1,
           select: {
@@ -271,24 +272,24 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
     const [formas, materiales, generos, lineas, colores, precio] = await Promise.all([
       prisma.producto.groupBy({
         by: ['forma'],
-        where: { estado: 'PUBLICADO', forma: { not: null } },
+        where: { ...EN_TIENDA, forma: { not: null } },
         _count: true,
       }),
       prisma.producto.groupBy({
         by: ['material'],
-        where: { estado: 'PUBLICADO', material: { not: null } },
+        where: { ...EN_TIENDA, material: { not: null } },
         _count: true,
       }),
-      prisma.producto.groupBy({ by: ['genero'], where: { estado: 'PUBLICADO' }, _count: true }),
-      prisma.producto.groupBy({ by: ['linea'], where: { estado: 'PUBLICADO' }, _count: true }),
+      prisma.producto.groupBy({ by: ['genero'], where: { ...EN_TIENDA }, _count: true }),
+      prisma.producto.groupBy({ by: ['linea'], where: { ...EN_TIENDA }, _count: true }),
       prisma.variante.groupBy({
         by: ['colorArmazon', 'colorArmazonHex'],
-        where: { activa: true, producto: { estado: 'PUBLICADO' } },
+        where: { activa: true, producto: { ...EN_TIENDA } },
         _count: true,
         orderBy: { colorArmazon: 'asc' },
       }),
       prisma.producto.aggregate({
-        where: { estado: 'PUBLICADO' },
+        where: { ...EN_TIENDA },
         _min: { precio: true },
         _max: { precio: true },
       }),
@@ -436,7 +437,7 @@ const catalogoRoutes: FastifyPluginAsync = async (app) => {
   app.post('/avisos-stock', formRateLimit, async (request, reply) => {
     const body = parse(avisoStockInput, request.body);
     const variante = await prisma.variante.findFirst({
-      where: { id: body.varianteId, activa: true, producto: { estado: 'PUBLICADO' } },
+      where: { id: body.varianteId, activa: true, producto: { ...EN_TIENDA } },
       select: { id: true },
     });
     if (!variante) throw Errors.notFound('La variante no existe');

@@ -97,7 +97,9 @@ export async function cargarItems(
       noDisponibles: faltantes,
     });
   }
-  const noDisponibles = variantes.filter((v) => !v.activa || v.producto.estado !== 'PUBLICADO');
+  const noDisponibles = variantes.filter(
+    (v) => !v.activa || v.producto.estado !== 'PUBLICADO' || !v.producto.visibleTienda,
+  );
   if (noDisponibles.length) {
     throw Errors.badRequest('Algunos productos del carrito ya no están disponibles', {
       noDisponibles: noDisponibles.map((v) => v.id),

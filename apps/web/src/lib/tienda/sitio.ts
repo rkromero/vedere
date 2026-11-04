@@ -43,7 +43,7 @@ export interface PaginaLegal {
 }
 
 /** Slugs públicos bajo /legal/<slug>. "cambios" se muestra en /cambios-y-devoluciones. */
-export const LEGAL_SLUGS = ['terminos', 'privacidad', 'cookies'] as const;
+export const LEGAL_SLUGS = ['terminos', 'privacidad', 'cookies', 'programa-opticas'] as const;
 export type LegalSlug = (typeof LEGAL_SLUGS)[number];
 
 export const LEGAL_META: Record<LegalSlug, { titulo: string; description: string }> = {
@@ -53,6 +53,10 @@ export const LEGAL_META: Record<LegalSlug, { titulo: string; description: string
     description: 'Qué datos tratamos, para qué y cómo ejercer tus derechos (Ley 25.326).',
   },
   cookies: { titulo: 'Política de cookies', description: 'Qué cookies usamos y cómo administrar tu consentimiento.' },
+  'programa-opticas': {
+    titulo: 'Términos del programa de ópticas socias',
+    description: 'Condiciones para sumarse a la red de ópticas socias Vedere y comprar al por mayor.',
+  },
 };
 
 export interface ArrepentimientoRespuesta {

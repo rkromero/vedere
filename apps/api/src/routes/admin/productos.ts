@@ -6,7 +6,9 @@ import { paginate, pageResponse, paginationQuery } from '../../lib/pagination.js
 import { productoInclude, serializeProducto } from '../../lib/serialize.js';
 import { uniqueSlug } from '../../lib/slug.js';
 import { parse } from '../../lib/validate.js';
+import { actualizarPrecios, historialPrecios } from '../../lib/precios.js';
 import {
+  actualizarPreciosInput,
   productoBulk,
   productoInput,
   productoListQuery,
@@ -80,6 +82,10 @@ const productosRoutes: FastifyPluginAsync = async (app) => {
     if (q.material) and.push({ material: q.material });
     if (q.genero) and.push({ genero: q.genero });
     if (q.destacado) and.push({ destacado: q.destacado === 'true' });
+    if (q.canal === 'tienda') and.push({ visibleTienda: true });
+    else if (q.canal === 'mayorista') and.push({ visibleMayorista: true });
+    else if (q.canal === 'solo_mayorista') and.push({ visibleMayorista: true, visibleTienda: false });
+    else if (q.canal === 'sin_mayorista') and.push({ precioMayorista: null });
     if (q.categoriaId) {
       const ids = await categoriaConDescendientes(q.categoriaId);
       and.push({ categorias: { some: { id: { in: ids.length ? ids : ['__none__'] } } } });
@@ -188,6 +194,21 @@ const productosRoutes: FastifyPluginAsync = async (app) => {
     if (!existing) throw Errors.notFound('Producto no encontrado');
     await prisma.producto.delete({ where: { id: existing.id } });
     return reply.status(204).send();
+  });
+
+  /**
+   * Actualización masiva de precios por porcentaje (web o mayorista) para todos los productos o los de una
+   * categoría (con sus hijas), marca o colección. `simular: true` devuelve la vista previa sin guardar.
+   * Cada actualización queda auditada (quién, cuándo, alcance y precio antes/después de cada producto).
+   */
+  app.post('/precios', async (request) => {
+    const body = parse(actualizarPreciosInput, request.body);
+    return actualizarPrecios(body, { id: request.user.sub, nombre: request.user.nombre ?? request.user.email });
+  });
+
+  app.get('/precios/historial', async (request) => {
+    const q = parse(paginationQuery, request.query);
+    return historialPrecios(q);
   });
 
   /** Acciones masivas: publicar, archivar, borrador, destacar, eliminar. */

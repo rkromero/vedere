@@ -16,6 +16,7 @@ import {
   Input,
   Modal,
   PageHeader,
+  Select,
   Textarea,
 } from '@/components/admin/ui';
 import { OpticasMapaAdmin } from './OpticasMapaAdmin';
@@ -35,6 +36,7 @@ interface FormState {
   nombre: string;
   razonSocial: string;
   cuit: string;
+  condicionIva: string;
   opticoResponsable: string;
   matricula: string;
   radioKm: string;
@@ -57,6 +59,7 @@ const vacio: FormState = {
   nombre: '',
   razonSocial: '',
   cuit: '',
+  condicionIva: '',
   opticoResponsable: '',
   matricula: '',
   radioKm: '10',
@@ -107,6 +110,7 @@ export function OpticasTable({
             nombre: o.nombre,
             razonSocial: o.razonSocial ?? '',
             cuit: o.cuit ?? '',
+            condicionIva: o.condicionIva ?? '',
             opticoResponsable: o.opticoResponsable ?? '',
             matricula: o.matricula ?? '',
             radioKm: String(o.radioKm ?? 10),
@@ -151,6 +155,7 @@ export function OpticasTable({
       nombre: form.nombre.trim(),
       razonSocial: form.razonSocial.trim() || null,
       cuit: form.cuit.trim() || null,
+      condicionIva: form.condicionIva || null,
       opticoResponsable: form.opticoResponsable.trim() || null,
       matricula: form.matricula.trim() || null,
       radioKm: Number(form.radioKm.replace(',', '.')) || 10,
@@ -377,6 +382,21 @@ export function OpticasTable({
             <Field label="CUIT" error={errors.cuit} hint="11 dígitos, con o sin guiones">
               <Input value={form.cuit} onChange={f('cuit')} inputMode="numeric" placeholder="30-12345678-9" />
             </Field>
+            <Field label="Condición frente al IVA" error={errors.condicionIva}>
+              <Select value={form.condicionIva} onChange={(e) => setForm({ ...form, condicionIva: e.target.value })}>
+                <option value="">Sin informar</option>
+                <option value="RESPONSABLE_INSCRIPTO">Responsable inscripto</option>
+                <option value="MONOTRIBUTO">Monotributo</option>
+                <option value="EXENTO">Exento</option>
+              </Select>
+            </Field>
+            {editing?.habilitacionUrl && (
+              <p className="self-end pb-2 text-sm">
+                <a href={editing.habilitacionUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                  Ver habilitación
+                </a>
+              </p>
+            )}
             <Field label="Óptico técnico responsable" error={errors.opticoResponsable}>
               <Input value={form.opticoResponsable} onChange={f('opticoResponsable')} />
             </Field>

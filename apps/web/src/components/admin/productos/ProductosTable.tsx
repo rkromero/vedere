@@ -26,6 +26,7 @@ import {
   estadoTone,
 } from '@/components/admin/ui';
 import { useToast } from '@/components/admin/toast';
+import { ActualizarPrecios } from './ActualizarPrecios';
 
 type Accion = 'publicar' | 'archivar' | 'borrador' | 'destacar' | 'eliminar';
 
@@ -76,6 +77,7 @@ export function ProductosTable({
   const [pendiente, setPendiente] = useState<Accion | null>(null);
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
   const [importando, setImportando] = useState(false);
+  const [preciosAbierto, setPreciosAbierto] = useState(false);
   const [importResultado, setImportResultado] = useState<ImportResult | null>(null);
   const [importErrores, setImportErrores] = useState<ImportError[] | null>(null);
   const [importMensaje, setImportMensaje] = useState<string | null>(null);
@@ -169,6 +171,9 @@ export function ProductosTable({
             >
               Exportar CSV
             </a>
+            <Btn variant="secondary" onClick={() => setPreciosAbierto(true)} data-testid="actualizar-precios">
+              Actualizar precios
+            </Btn>
             <Btn variant="secondary" onClick={() => fileRef.current?.click()} loading={importando}>
               Importar CSV
             </Btn>
@@ -208,6 +213,17 @@ export function ProductosTable({
           label="Colección"
           options={colecciones.map((c) => ({ value: c.id, label: c.nombre }))}
           allLabel="Todas"
+        />
+        <FilterSelect
+          param="canal"
+          label="Canal"
+          options={[
+            { value: 'tienda', label: 'Visibles en la tienda' },
+            { value: 'mayorista', label: 'Visibles para ópticas' },
+            { value: 'solo_mayorista', label: 'Sólo ópticas' },
+            { value: 'sin_mayorista', label: 'Sin precio mayorista' },
+          ]}
+          allLabel="Todos"
         />
         <FilterSelect
           param="bajoStock"
@@ -280,7 +296,8 @@ export function ProductosTable({
               <Th>Producto</Th>
               <Th>Marca</Th>
               <Th>Línea</Th>
-              <Th align="right">Precio</Th>
+              <Th align="right">Precio web</Th>
+              <Th align="right">Mayorista</Th>
               <Th align="right">Stock</Th>
               <Th>Estado</Th>
               <Th>Actualizado</Th>
@@ -333,6 +350,24 @@ export function ProductosTable({
                     )}
                   </Td>
                   <Td align="right">
+                    {p.precioMayorista != null ? (
+                      <span className="font-medium">{formatPrecio(p.precioMayorista)}</span>
+                    ) : (
+                      <span className="text-gris-medio">—</span>
+                    )}
+                    {(p.visibleTienda === false || p.visibleMayorista === false) && (
+                      <div className="mt-0.5 flex justify-end">
+                        <Badge tone="neutral">
+                          {p.visibleTienda === false && p.visibleMayorista === false
+                            ? 'Oculto'
+                            : p.visibleTienda === false
+                              ? 'Sólo ópticas'
+                              : 'Sólo web'}
+                        </Badge>
+                      </div>
+                    )}
+                  </Td>
+                  <Td align="right">
                     <div className="flex items-center justify-end gap-2">
                       <span>{p.stockTotal}</span>
                       {algunaBaja && <Badge tone="warn">Bajo</Badge>}
@@ -360,6 +395,14 @@ export function ProductosTable({
           pageSize={data.pageSize}
         />
       )}
+
+      <ActualizarPrecios
+        open={preciosAbierto}
+        onClose={() => setPreciosAbierto(false)}
+        marcas={marcas}
+        categorias={categoriaOptions}
+        colecciones={colecciones}
+      />
 
       <ConfirmDialog
         open={confirmarEliminar}

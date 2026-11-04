@@ -56,6 +56,9 @@ export const opticaInput = z.object({
   matricula: nullableStr(40),
   comisionPct: z.number().min(0).max(100).default(0),
   capacidadDiaria: z.number().int().min(0).max(1000).default(20),
+  // B2B 1: condición frente al IVA y habilitación.
+  condicionIva: z.enum(['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTO', 'EXENTO']).nullable().optional(),
+  habilitacionUrl: nullableStr(500),
 });
 export const opticaUpdate = partialSinDefaults(opticaInput.shape);
 
