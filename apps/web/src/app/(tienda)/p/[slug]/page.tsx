@@ -57,7 +57,12 @@ export default async function ProductoPage({
   const [{ slug }, { v }] = await Promise.all([params, searchParams]);
   const producto = await getProducto(slug);
   if (!producto) notFound();
-  const { items: relacionados } = await catalogo.relacionados(slug);
+  const [{ items: relacionados }, accesorios] = await Promise.all([
+    catalogo.relacionados(slug),
+    producto.linea === 'ACCESORIO'
+      ? Promise.resolve({ items: [] as typeof producto[] })
+      : catalogo.productos('?linea=ACCESORIO&pageSize=8&page=1&orden=relevancia'),
+  ]);
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -85,19 +90,42 @@ export default async function ProductoPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Container className="py-4 md:py-8">
+      <div className="px-0 pb-4 md:px-6 md:py-6">
         <ProductoDetalle producto={producto} varianteInicialId={v ?? null} />
-      </Container>
+      </div>
 
       {relacionados.length > 0 && (
-        <section aria-labelledby="relacionados-titulo" className="bg-gris-claro">
+        <section aria-labelledby="relacionados-titulo" className="border-t border-negro/10">
           <Container className="py-12">
-            <h2 id="relacionados-titulo" className="font-campaign mb-6 text-3xl md:text-4xl">
-              Te pueden gustar
+            <h2
+              id="relacionados-titulo"
+              className="font-text mb-6 text-sm font-bold uppercase tracking-[0.12em] md:text-base"
+            >
+              Te recomendamos
             </h2>
             <LazyMount minHeight="20rem">
-              <Carousel label="Productos relacionados">
+              <Carousel label="Productos recomendados">
                 {relacionados.map((p) => (
+                  <ProductCard key={p.id} producto={p} sizes="(min-width: 1024px) 23vw, 70vw" />
+                ))}
+              </Carousel>
+            </LazyMount>
+          </Container>
+        </section>
+      )}
+
+      {accesorios.items.length > 0 && (
+        <section aria-labelledby="accesorios-titulo" className="border-t border-negro/10">
+          <Container className="py-12">
+            <h2
+              id="accesorios-titulo"
+              className="font-text mb-6 text-sm font-bold uppercase tracking-[0.12em] md:text-base"
+            >
+              Accesorios
+            </h2>
+            <LazyMount minHeight="20rem">
+              <Carousel label="Accesorios">
+                {accesorios.items.map((p) => (
                   <ProductCard key={p.id} producto={p} sizes="(min-width: 1024px) 23vw, 70vw" />
                 ))}
               </Carousel>

@@ -2,7 +2,7 @@
 // Scroll infinito: carga las páginas siguientes al acercarse al final (con botón de respaldo)
 // y mantiene la URL compartible actualizando ?page=.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '@vedere/ui';
+import { cn } from '@vedere/ui';
 import { tiendaApi } from '@/lib/tienda/client';
 import type { Paged, Producto } from '@/lib/types';
 import { ProductCard } from '../ProductCard';
@@ -15,6 +15,8 @@ export function MasProductos({
   pageSize,
   basePath,
   urlQuery,
+  gridClassName,
+  sizes,
 }: {
   /** Query de la API con el marcador PAGE en lugar del número de página. */
   apiQueryBase: string;
@@ -25,6 +27,9 @@ export function MasProductos({
   basePath: string;
   /** Query string de la URL de la página sin "?" ni page. */
   urlQuery: string;
+  /** Clases de la grilla (misma densidad que la primera página). */
+  gridClassName: string;
+  sizes?: string;
 }) {
   const [page, setPage] = useState(pageInicial);
   const [items, setItems] = useState<Producto[]>([]);
@@ -79,24 +84,33 @@ export function MasProductos({
   return (
     <div className="font-text">
       {items.length > 0 && (
-        <ul className="mt-7 grid grid-cols-2 gap-x-3 gap-y-7 sm:gap-x-4 lg:grid-cols-4" aria-label="Más productos">
+        <ul className={cn(gridClassName, 'border-b border-negro/10')} aria-label="Más productos">
           {items.map((p) => (
-            <li key={p.id}>
-              <ProductCard producto={p} />
+            <li key={p.id} className="bg-blanco">
+              <ProductCard producto={p} sizes={sizes} />
             </li>
           ))}
         </ul>
       )}
       <div ref={sentinel} aria-hidden="true" className="h-px" />
-      <div className="mt-10 flex flex-col items-center gap-3 text-sm text-gris-texto">
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-xs uppercase tracking-wider text-gris-texto">
         <p aria-live="polite">
-          Viste {vistos} de {total}
+          Viste {vistos} de {total} productos
         </p>
+        <div className="h-0.5 w-48 bg-negro/10" aria-hidden="true">
+          <div className="h-full bg-negro" style={{ width: `${total ? (vistos / total) * 100 : 0}%` }} />
+        </div>
         {error && <p className="text-carey">No pudimos cargar más productos.</p>}
         {hayMas && (
-          <Button variant="secondary" onClick={() => void cargar()} loading={cargando}>
-            Ver más
-          </Button>
+          <button
+            type="button"
+            onClick={() => void cargar()}
+            disabled={cargando}
+            aria-busy={cargando || undefined}
+            className="mt-2 h-12 border border-negro px-10 text-xs font-semibold uppercase tracking-wider text-negro transition-colors hover:bg-negro hover:text-blanco disabled:opacity-60"
+          >
+            {cargando ? 'Cargando…' : 'Más resultados'}
+          </button>
         )}
       </div>
     </div>

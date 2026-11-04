@@ -3,17 +3,34 @@ import { notFound } from 'next/navigation';
 import { Listado } from '@/components/tienda/catalogo/Listado';
 import type { ContextoListado, SearchParams } from '@/lib/tienda/filtros';
 
-const SECCIONES: Record<string, { titulo: string; descripcion: string; ctx: ContextoListado }> = {
+const SECCIONES: Record<
+  string,
+  { titulo: string; descripcion: string; ctx: ContextoListado; textoSeo?: { titulo: string; parrafos: string[] } }
+> = {
   sol: {
     titulo: 'Anteojos de sol',
     descripcion: 'Protección UV400 en todos los modelos. Polarizados, clásicos y deportivos.',
     ctx: { linea: 'SOL' },
+    textoSeo: {
+      titulo: 'Cómo elegir tus anteojos de sol',
+      parrafos: [
+        'Todos nuestros anteojos de sol tienen filtro UV400, que bloquea el 100% de los rayos UVA y UVB. Los polarizados además cortan el reflejo del agua, el asfalto y la nieve: son ideales para manejar y para la playa.',
+        'Para elegir la forma, pensá en tu cara: los modelos aviador y redondos suavizan rostros angulosos, los cuadrados y rectangulares dan estructura a caras redondas y el ojo de gato levanta la mirada. Si tenés dudas, probalos sin cargo en tu óptica socia más cercana.',
+      ],
+    },
   },
   recetados: {
     titulo: 'Recetados',
     descripcion:
       'Elegís el armazón, cargás tu receta y tu óptica socia arma los lentes. Antirreflejo incluido.',
     ctx: { linea: 'RECETADO' },
+    textoSeo: {
+      titulo: 'Anteojos recetados online',
+      parrafos: [
+        'Elegís el armazón, cargás tu receta y tu óptica socia arma los lentes con antirreflejo incluido. Retirás en la óptica, ajustado a tu cara, o te lo enviamos a domicilio.',
+        'Si no tenés receta vigente, podés sacar turno con un profesional en cualquiera de nuestras ópticas socias.',
+      ],
+    },
   },
   multifocales: {
     titulo: 'Multifocales',
@@ -72,6 +89,7 @@ export default async function SeccionPage({
       descripcion={s.descripcion}
       basePath={`/${seccion}`}
       ctx={s.ctx}
+      textoSeo={s.textoSeo}
       searchParams={await searchParams}
     />
   );

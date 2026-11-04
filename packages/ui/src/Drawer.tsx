@@ -25,10 +25,10 @@ export interface DrawerProps {
 }
 
 const sides: Record<DrawerSide, string> = {
-  right: 'inset-y-0 right-0 h-full w-full max-w-md translate-x-0 rounded-none sm:rounded-l-2xl',
-  left: 'inset-y-0 left-0 h-full w-full max-w-sm rounded-none sm:rounded-r-2xl',
-  bottom: 'inset-x-0 bottom-0 max-h-[92dvh] w-full rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
-  center: 'inset-x-0 bottom-0 max-h-[92dvh] w-full rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
+  right: 'inset-y-0 right-0 left-auto h-full w-full max-w-md translate-x-0 rounded-none sm:rounded-l-2xl',
+  left: 'inset-y-0 left-0 right-auto h-full w-full max-w-sm rounded-none sm:rounded-r-2xl',
+  bottom: 'inset-x-0 bottom-0 max-h-[92dvh] w-full max-w-none rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
+  center: 'inset-x-0 bottom-0 max-h-[92dvh] w-full max-w-none rounded-t-2xl sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl',
 };
 
 export function Drawer({
@@ -87,7 +87,7 @@ export function Drawer({
         if (e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        'fixed m-0 hidden max-w-none flex-col bg-blanco p-0 text-negro shadow-2xl open:flex backdrop:bg-negro/50',
+        'fixed m-0 hidden flex-col bg-blanco p-0 text-negro shadow-2xl open:flex backdrop:bg-negro/50',
         'open:animate-[drawer-in_.22s_ease-out]',
         sides[side],
         className,
