@@ -71,6 +71,7 @@ const productosRoutes: FastifyPluginAsync = async (app) => {
           { nombre: { contains: q.q, mode: 'insensitive' } },
           { slug: { contains: q.q, mode: 'insensitive' } },
           { variantes: { some: { sku: { contains: q.q, mode: 'insensitive' } } } },
+          { variantes: { some: { codigoBarras: { contains: q.q.replace(/\s/g, ''), mode: 'insensitive' } } } },
         ],
       });
     }

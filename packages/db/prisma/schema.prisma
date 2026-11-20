@@ -310,6 +310,8 @@ model Variante {
   colorLente      String?  @map("color_lente")
   colorLenteHex   String?  @map("color_lente_hex")
   sku             String   @unique
+  /// Código de barras del fabricante (EAN-13 / UPC / GTIN). Se usa para cargar stock escaneando.
+  codigoBarras    String?  @unique @map("codigo_barras")
   stock           Int      @default(0)
   stockMinimo     Int      @default(0) @map("stock_minimo")
   activa          Boolean  @default(true)

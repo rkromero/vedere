@@ -5,6 +5,7 @@ import { stringify } from 'csv-stringify/sync';
 import { z } from 'zod';
 import { prisma } from '@vedere/db';
 import type { Prisma } from '@vedere/db';
+import { normalizarCodigo } from '../../lib/codigo-barras.js';
 import { Errors } from '../../lib/errors.js';
 import { productoInclude } from '../../lib/serialize.js';
 import { dec } from '../../lib/serialize.js';
@@ -44,6 +45,7 @@ export const CSV_COLUMNS = [
   'seo_title',
   'seo_description',
   'sku',
+  'codigo_barras',
   'color_armazon',
   'color_armazon_hex',
   'color_lente',
@@ -109,6 +111,7 @@ export async function exportProductosCsv(): Promise<string> {
       rows.push({
         ...base,
         sku: '',
+        codigo_barras: '',
         color_armazon: '',
         color_armazon_hex: '',
         color_lente: '',
@@ -125,6 +128,7 @@ export async function exportProductosCsv(): Promise<string> {
       rows.push({
         ...base,
         sku: v.sku,
+        codigo_barras: v.codigoBarras ?? '',
         color_armazon: v.colorArmazon,
         color_armazon_hex: v.colorArmazonHex ?? '',
         color_lente: v.colorLente ?? '',
@@ -219,6 +223,7 @@ const rowSchema = z.object({
   seo_title: optStr,
   seo_description: optStr,
   sku: optStr,
+  codigo_barras: optStr.optional(), // opcional: los CSV viejos no la traen
   color_armazon: optStr,
   color_armazon_hex: optStr,
   color_lente: optStr,
@@ -423,6 +428,8 @@ export async function importProductosCsv(csv: string, userId: string): Promise<I
             colorLenteHex: r.color_lente_hex,
             stock: r.stock ?? 0,
             stockMinimo: r.stock_minimo ?? 0,
+            // Columna vacía o ausente: no toca el código ya cargado.
+            ...(r.codigo_barras ? { codigoBarras: normalizarCodigo(r.codigo_barras) ?? r.codigo_barras } : {}),
             activa: r.variante_activa,
             orden: r.variante_orden ?? i,
             updatedById: userId,

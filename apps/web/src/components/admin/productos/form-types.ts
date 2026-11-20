@@ -10,6 +10,7 @@ export interface VarianteForm {
   colorLente: string;
   colorLenteHex: string;
   sku: string;
+  codigoBarras: string;
   stock: string;
   stockMinimo: string;
   activa: boolean;
@@ -66,6 +67,7 @@ export function nuevaVariante(): VarianteForm {
     colorLente: '',
     colorLenteHex: '',
     sku: '',
+    codigoBarras: '',
     stock: '0',
     stockMinimo: '0',
     activa: true,
@@ -82,6 +84,7 @@ export function varianteToForm(v: Variante): VarianteForm {
     colorLente: v.colorLente ?? '',
     colorLenteHex: v.colorLenteHex ?? '',
     sku: v.sku,
+    codigoBarras: v.codigoBarras ?? '',
     stock: String(v.stock),
     stockMinimo: String(v.stockMinimo),
     activa: v.activa,
@@ -189,6 +192,7 @@ export function variantePayload(v: VarianteForm, orden: number) {
     colorLente: strOrNull(v.colorLente),
     colorLenteHex: strOrNull(v.colorLenteHex),
     sku: v.sku.trim(),
+    codigoBarras: strOrNull(v.codigoBarras),
     stock: Number(v.stock || 0),
     stockMinimo: Number(v.stockMinimo || 0),
     activa: v.activa,

@@ -187,6 +187,9 @@ export function ProductosTable({
                 if (f) void importar(f);
               }}
             />
+            <LinkBtn href="/admin/productos/escanear" variant="secondary">
+              Cargar stock (escanear)
+            </LinkBtn>
             <LinkBtn href="/admin/productos/nuevo">Nuevo producto</LinkBtn>
           </>
         }

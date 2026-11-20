@@ -7,8 +7,17 @@ import type { Categoria, Coleccion, Marca, Paged, Producto } from '@/lib/types';
 export const metadata: Metadata = { title: 'Editar producto' };
 export const dynamic = 'force-dynamic';
 
-export default async function EditarProductoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditarProductoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  // ?codigo=: agregar una variante nueva (otro color del mismo modelo) desde un código escaneado.
+  const codigo = typeof sp.codigo === 'string' ? sp.codigo : undefined;
 
   let producto: Producto;
   try {
@@ -31,6 +40,7 @@ export default async function EditarProductoPage({ params }: { params: Promise<{
       marcas={marcas.items}
       categorias={categorias.items}
       colecciones={colecciones.items}
+      codigoInicial={codigo}
     />
   );
 }
