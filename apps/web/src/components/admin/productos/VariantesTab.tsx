@@ -8,11 +8,16 @@ export function VariantesTab({
   errors,
   onChange,
   onRemove,
+  onEscanear,
+  escaneando,
 }: {
   variantes: VarianteForm[];
   errors: Record<string, string>;
   onChange: (variantes: VarianteForm[]) => void;
   onRemove: (v: VarianteForm) => void;
+  /** Abre el lector para completar esta variante desde su código de barras. */
+  onEscanear?: (key: string) => void;
+  escaneando?: boolean;
 }) {
   function update(i: number, patch: Partial<VarianteForm>) {
     onChange(variantes.map((v, j) => (j === i ? { ...v, ...patch } : v)));
@@ -106,6 +111,32 @@ export function VariantesTab({
                 placeholder="VED-AVC-NEG"
                 className="font-mono uppercase"
               />
+            </Field>
+            <Field
+              label="Código de barras"
+              error={err(i, 'codigoBarras')}
+              hint="EAN / UPC de la etiqueta"
+            >
+              <div className="flex gap-2">
+                <Input
+                  value={v.codigoBarras}
+                  onChange={(e) => update(i, { codigoBarras: e.target.value.replace(/\s/g, '') })}
+                  placeholder="7790000000000"
+                  inputMode="numeric"
+                  className="font-mono"
+                />
+                {onEscanear && (
+                  <Btn
+                    variant="secondary"
+                    onClick={() => onEscanear(v.key)}
+                    disabled={escaneando}
+                    aria-label="Escanear código de barras de esta variante"
+                    title="Escanear y completar color y fotos"
+                  >
+                    Escanear
+                  </Btn>
+                )}
+              </div>
             </Field>
             <Field label="Stock" error={err(i, 'stock')}>
               <Input

@@ -6,6 +6,7 @@ import categoriasRoutes from './categorias.js';
 import coleccionesRoutes from './colecciones.js';
 import productosRoutes from './productos.js';
 import variantesRoutes from './variantes.js';
+import codigoBarrasRoutes from './codigo-barras.js';
 import imagenesRoutes from './imagenes.js';
 import csvRoutes from './csv.js';
 import dashboardRoutes from './dashboard.js';
@@ -38,6 +39,7 @@ const adminRoutes: FastifyPluginAsync = async (app) => {
     await staff.register(csvRoutes); // /productos/export.csv y /productos/import (antes que /productos/:id)
     await staff.register(productosRoutes, { prefix: '/productos' });
     await staff.register(variantesRoutes);
+    await staff.register(codigoBarrasRoutes); // /codigo-barras/:codigo y /variantes/:id/stock
     await staff.register(imagenesRoutes);
     await staff.register(promosRoutes, { prefix: '/promos' });
     await staff.register(opticasRoutes, { prefix: '/opticas' });

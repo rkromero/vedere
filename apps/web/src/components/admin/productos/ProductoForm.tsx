@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,6 +18,7 @@ import {
   Input,
   PageHeader,
   Select,
+  Spinner,
   Tabs,
   Textarea,
   estadoTone,
@@ -28,6 +29,15 @@ import type { ProductoFormState, VarianteForm } from './form-types';
 import { VariantesTab } from './VariantesTab';
 import { ImagenesTab } from './ImagenesTab';
 import { SeoTab } from './SeoTab';
+import { LectorCodigoModal } from './LectorCodigo';
+import {
+  asegurarMarca,
+  buscarCodigo,
+  completarProducto,
+  completarVariante,
+  importarFotos,
+  varianteDestino,
+} from './escaneo';
 
 type Tab = 'datos' | 'variantes' | 'imagenes' | 'seo';
 
@@ -85,11 +95,14 @@ export function ProductoForm({
   marcas,
   categorias,
   colecciones,
+  codigoInicial,
 }: {
   producto: Producto | null;
   marcas: Marca[];
   categorias: Categoria[];
   colecciones: Coleccion[];
+  /** Código de barras escaneado antes de entrar (?codigo=): se busca y se vuelca al abrir. */
+  codigoInicial?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -103,6 +116,11 @@ export function ProductoForm({
   const [eliminando, setEliminando] = useState(false);
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
   const [variantesEliminadas, setVariantesEliminadas] = useState<string[]>([]);
+  const [marcasLista, setMarcasLista] = useState<Marca[]>(marcas);
+  const [lector, setLector] = useState<{ abierto: boolean; varianteKey?: string }>({ abierto: false });
+  const [escaneo, setEscaneo] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const patch = (p: Partial<ProductoFormState>) => setState((s) => ({ ...s, ...p }));
 
@@ -123,6 +141,93 @@ export function ProductoForm({
     if (v.id) setVariantesEliminadas((ids) => [...ids, v.id!]);
     setState((s) => ({ ...s, variantes: s.variantes.filter((x) => x.key !== v.key) }));
   }
+
+  /**
+   * Busca el código escaneado y completa el formulario: datos del producto (sólo en el alta y sin pisar
+   * lo cargado), la variante (código, SKU, colores, stock 1) y sus fotos, que se importan a nuestro storage.
+   */
+  async function aplicarCodigo(codigo: string, varianteKey?: string) {
+    setEscaneo('Buscando el código…');
+    try {
+      const r = await buscarCodigo(codigo);
+      const propia = r.existente && stateRef.current.variantes.some((v) => v.id === r.existente!.varianteId);
+      if (r.existente && !propia) {
+        const e = r.existente;
+        setGeneral(
+          `El código ${r.codigo} ya está cargado en “${e.productoNombre}” (${e.colorArmazon} · ${e.sku}, stock ${e.stock}). Para sumar stock usá “Cargar stock”.`,
+        );
+        toast.error('Ese código ya está cargado en otro producto');
+        return;
+      }
+      if (propia) {
+        toast.ok('Ese código ya es de una variante de este producto');
+        return;
+      }
+      const s = r.sugerencia;
+      r.avisos.forEach((a) => toast.error(a));
+
+      let marcaId = r.marcaId;
+      if (s && !esEdicion) {
+        try {
+          const { marca, creada } = await asegurarMarca(s.marca, r.marcaId, marcasLista);
+          if (marca) {
+            marcaId = marca.id;
+            if (creada) {
+              setMarcasLista((l) => [...l, marca]);
+              toast.ok(`Marca “${marca.nombre}” creada`);
+            }
+          }
+        } catch {
+          // Si no se pudo crear la marca seguimos sin ella.
+        }
+      }
+
+      const { key } = varianteDestino(stateRef.current, varianteKey);
+      const destino = stateRef.current.variantes.find((v) => v.key === key);
+      let fotos: Awaited<ReturnType<typeof importarFotos>> = { imagenes: [], fallidas: 0 };
+      if (s && s.imagenes.length && (!destino || destino.imagenes.length === 0)) {
+        setEscaneo(`Importando ${s.imagenes.length} foto${s.imagenes.length === 1 ? '' : 's'}…`);
+        try {
+          fotos = await importarFotos(s.imagenes, s.nombre);
+        } catch (err) {
+          toast.error(`No se pudieron importar las fotos: ${errorMessage(err)}`);
+        }
+      }
+
+      setState((st) => {
+        const base = s && !esEdicion ? completarProducto(st, s, marcaId) : st;
+        const { variantes, key: k } = varianteDestino(base, key);
+        return {
+          ...base,
+          variantes: variantes.map((v) => (v.key === k ? completarVariante(v, r.codigo, s, fotos.imagenes) : v)),
+        };
+      });
+      setGeneral(null);
+
+      if (s) {
+        const partes = [`Datos de ${s.fuente}`];
+        if (fotos.imagenes.length) partes.push(`${fotos.imagenes.length} foto${fotos.imagenes.length === 1 ? '' : 's'}`);
+        toast.ok(`${partes.join(' + ')} cargados. Revisalos y completá el precio.`);
+        if (fotos.fallidas) toast.error(`${fotos.fallidas} foto${fotos.fallidas === 1 ? '' : 's'} no se pudo descargar`);
+      } else {
+        toast.error('No encontramos datos de ese código: cargamos el código y el SKU, completá el resto a mano.');
+        setTab('variantes');
+      }
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setEscaneo(null);
+    }
+  }
+
+  const codigoAplicado = useRef(false);
+  useEffect(() => {
+    if (codigoInicial && !codigoAplicado.current) {
+      codigoAplicado.current = true;
+      void aplicarCodigo(codigoInicial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigoInicial]);
 
   // Árbol de categorías: padres activos con sus hijas (ordenados).
   const arbol = useMemo(() => {
@@ -293,6 +398,14 @@ export function ProductoForm({
             {esEdicion && (
               <Badge tone={estadoTone(producto.estado)}>{LABELS.estado[producto.estado]}</Badge>
             )}
+            <Btn
+              variant="secondary"
+              onClick={() => setLector({ abierto: true })}
+              loading={escaneo !== null}
+              disabled={guardando}
+            >
+              {esEdicion ? 'Escanear variante nueva' : 'Escanear código'}
+            </Btn>
             {esEdicion && (
               <Btn variant="danger" onClick={() => setConfirmarEliminar(true)} disabled={guardando}>
                 Eliminar
@@ -311,6 +424,26 @@ export function ProductoForm({
           className="mb-4 rounded-lg border border-carey/40 bg-carey/10 px-4 py-3 text-sm text-carey"
         >
           {general}
+        </div>
+      )}
+
+      {escaneo && (
+        <div
+          role="status"
+          className="mb-4 flex items-center gap-2 rounded-lg border border-negro/10 bg-gris-claro px-4 py-3 text-sm"
+        >
+          <Spinner className="h-4 w-4" /> {escaneo}
+        </div>
+      )}
+
+      {!esEdicion && !escaneo && !state.variantes.some((v) => v.codigoBarras) && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-dashed border-negro/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-negro/80">
+            ¿Tenés el anteojo a mano? Escaneá el código de barras y completamos nombre, marca, medidas, color y fotos.
+          </p>
+          <Btn size="sm" onClick={() => setLector({ abierto: true })}>
+            Escanear código
+          </Btn>
         </div>
       )}
 
@@ -633,7 +766,7 @@ export function ProductoForm({
                     onChange={(e) => patch({ marcaId: e.target.value })}
                   >
                     <option value="">Sin marca</option>
-                    {marcas.map((m) => (
+                    {marcasLista.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.nombre}
                         {!m.activa ? ' (inactiva)' : ''}
@@ -708,6 +841,8 @@ export function ProductoForm({
           errors={errors}
           onChange={(variantes) => patch({ variantes })}
           onRemove={quitarVariante}
+          onEscanear={(key) => setLector({ abierto: true, varianteKey: key })}
+          escaneando={escaneo !== null}
         />
       )}
 
@@ -739,6 +874,12 @@ export function ProductoForm({
           </div>
         </div>
       </div>
+
+      <LectorCodigoModal
+        open={lector.abierto}
+        onClose={() => setLector((l) => ({ ...l, abierto: false }))}
+        onCodigo={(c) => void aplicarCodigo(c, lector.varianteKey)}
+      />
 
       <ConfirmDialog
         open={confirmarEliminar}

@@ -3,6 +3,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { Errors } from '../../lib/errors.js';
 import { parse } from '../../lib/validate.js';
+import { importarImagenes } from '../../lib/imagen-remota.js';
+import { importarImagenesInput } from '../../schemas/catalogo.js';
 import {
   ALLOWED_IMAGE_TYPES,
   presignUpload,
@@ -51,6 +53,15 @@ const imagenesRoutes: FastifyPluginAsync = async (app) => {
 
     const result = await processAndStoreImage(app.env, { buffer, folder });
     return reply.status(201).send({ ...result, nombreOriginal: file.filename });
+  });
+
+  /**
+   * Importa fotos desde URLs externas (las que trae la búsqueda por código de barras):
+   * las descarga, las pasa a WebP en 3 tamaños y las guarda como una subida normal.
+   */
+  app.post('/imagenes/importar', async (request) => {
+    const body = parse(importarImagenesInput, request.body);
+    return importarImagenes(app.env, body.urls, body.folder);
   });
 
   /** URL prefirmada para subida directa a R2 (sin procesar). */

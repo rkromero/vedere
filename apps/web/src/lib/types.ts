@@ -64,6 +64,7 @@ export interface Variante {
   colorLente: string | null;
   colorLenteHex: string | null;
   sku: string;
+  codigoBarras: string | null;
   stock: number;
   stockMinimo: number;
   bajoStock: boolean;
@@ -321,4 +322,53 @@ export interface SolicitudOptica {
 export interface SolicitudOpticaDetalle extends SolicitudOptica {
   coincidencias: Array<{ id: string; nombre: string; slug: string; localidad: string; activa: boolean }>;
   usuarioExistente: { id: string; rol: string; opticaId: string | null; activo: boolean } | null;
+}
+
+// ---------- Código de barras ----------
+export interface SugerenciaProducto {
+  codigo: string;
+  fuente: string;
+  tituloOriginal: string;
+  nombre: string;
+  marca: string | null;
+  modelo: string | null;
+  descripcion: string;
+  linea: Linea | null;
+  forma: Forma | null;
+  material: Material | null;
+  genero: Genero | null;
+  polarizado: boolean;
+  calibreMm: number | null;
+  puenteMm: number | null;
+  varillaMm: number | null;
+  colorArmazon: string | null;
+  colorArmazonHex: string | null;
+  colorLente: string | null;
+  colorLenteHex: string | null;
+  imagenes: string[];
+}
+
+export interface VarianteEscaneada {
+  varianteId: string;
+  productoId: string;
+  productoNombre: string;
+  productoEstado: EstadoProducto;
+  marca: string | null;
+  colorArmazon: string;
+  colorLente: string | null;
+  sku: string;
+  codigoBarras: string | null;
+  stock: number;
+  stockMinimo: number;
+  activa: boolean;
+  imagen: string | null;
+}
+
+export interface ResultadoCodigo {
+  codigo: string;
+  existente: VarianteEscaneada | null;
+  sugerencia: SugerenciaProducto | null;
+  /** Marca del catálogo que coincide con la sugerida (null si no existe todavía). */
+  marcaId: string | null;
+  avisos: string[];
 }

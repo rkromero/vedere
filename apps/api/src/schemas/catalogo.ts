@@ -1,5 +1,6 @@
 // Esquemas Zod del catálogo (entrada de la API admin).
 import { z } from 'zod';
+import { normalizarCodigo } from '../lib/codigo-barras.js';
 
 export const LINEAS = ['SOL', 'RECETADO', 'MULTIFOCAL', 'ACCESORIO'] as const;
 export const FORMAS = ['REDONDO', 'CUADRADO', 'OJO_DE_GATO', 'AVIADOR', 'RECTANGULAR'] as const;
@@ -76,6 +77,34 @@ export const imagenInput = z.object({
   alt: nullableStr(160),
 });
 
+// ---------- Código de barras ----------
+export const codigoBarrasSchema = z
+  .string()
+  .trim()
+  .transform((s, ctx) => {
+    const n = normalizarCodigo(s);
+    if (!n) {
+      ctx.addIssue({ code: 'custom', message: 'Código de barras inválido (4 a 32 letras o números)' });
+      return z.NEVER;
+    }
+    return n;
+  });
+
+export const ajusteStockInput = z.object({
+  /** Unidades a sumar (o restar, si es negativo). */
+  cantidad: z
+    .number()
+    .int()
+    .min(-10000)
+    .max(10000)
+    .refine((n) => n !== 0, 'La cantidad no puede ser 0'),
+});
+
+export const importarImagenesInput = z.object({
+  urls: z.array(z.url()).min(1).max(8),
+  folder: z.string().trim().min(1).max(60).default('productos'),
+});
+
 // ---------- Variante ----------
 export const varianteInput = z.object({
   colorArmazon: z.string().trim().min(1, 'Ingresá el color del armazón').max(60),
@@ -89,6 +118,8 @@ export const varianteInput = z.object({
     .max(60)
     .regex(/^[A-Za-z0-9._-]+$/, 'SKU inválido (letras, números, . _ -)')
     .transform((s) => s.toUpperCase()),
+  /** Código de barras del fabricante (EAN / UPC / GTIN o código interno). */
+  codigoBarras: codigoBarrasSchema.nullable().optional(),
   stock: z.number().int().min(0).default(0),
   stockMinimo: z.number().int().min(0).default(0),
   activa: z.boolean().default(true),

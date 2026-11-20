@@ -69,6 +69,15 @@ const envSchema = z.object({
   // Cada cuántos minutos se revisan los pedidos cuyo plazo de aceptación venció.
   ASIGNACION_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
 
+  // Carga de stock por código de barras: búsqueda de datos del anteojo en bases públicas.
+  // Sin claves usa el plan gratis de UPCitemdb (~100 consultas/día) y Open Product Facts.
+  CODIGO_BARRAS_LOOKUP: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  UPCITEMDB_USER_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  BARCODELOOKUP_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+
   // ---- Prompt 6 ----
   // Login con Google (OAuth 2.0, flujo de código). Sin credenciales el botón no se muestra.
   GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),

@@ -26,6 +26,8 @@ export const Errors = {
 
 const UNIQUE_FIELD_LABELS: Record<string, string> = {
   sku: 'El SKU ya existe en otra variante',
+  codigo_barras: 'Ese código de barras ya está cargado en otra variante',
+  codigoBarras: 'Ese código de barras ya está cargado en otra variante',
   slug: 'Ya existe un registro con ese slug',
   email: 'Ya existe un usuario con ese email',
   token_hash: 'Token duplicado',

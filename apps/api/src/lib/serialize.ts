@@ -38,6 +38,7 @@ export function serializeVariante(v: ProductoFull['variantes'][number]) {
     colorLente: v.colorLente,
     colorLenteHex: v.colorLenteHex,
     sku: v.sku,
+    codigoBarras: v.codigoBarras,
     stock: v.stock,
     stockMinimo: v.stockMinimo,
     bajoStock: v.stock < v.stockMinimo,
