@@ -26,6 +26,7 @@ export default async function NuevoProductoPage({
       categorias={categorias.items}
       colecciones={colecciones.items}
       codigoInicial={codigo}
+      abrirFoto={sp.foto === '1'}
     />
   );
 }

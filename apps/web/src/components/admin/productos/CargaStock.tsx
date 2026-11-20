@@ -347,7 +347,16 @@ function Nuevo({ r }: { r: ResultadoCodigo }) {
       )}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        <LinkBtn href={`/admin/productos/nuevo?codigo=${codigo}`}>Crear producto</LinkBtn>
+        {s ? (
+          <LinkBtn href={`/admin/productos/nuevo?codigo=${codigo}`}>Crear producto</LinkBtn>
+        ) : (
+          <>
+            <LinkBtn href={`/admin/productos/nuevo?codigo=${codigo}&foto=1`}>Crear con foto de la patilla</LinkBtn>
+            <LinkBtn href={`/admin/productos/nuevo?codigo=${codigo}`} variant="secondary">
+              Crear a mano
+            </LinkBtn>
+          </>
+        )}
         <Btn variant="secondary" onClick={() => setBuscarProducto((b) => !b)}>
           Es otro color de un producto existente
         </Btn>
