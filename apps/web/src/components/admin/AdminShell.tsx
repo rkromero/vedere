@@ -1,6 +1,6 @@
 'use client';
 // Layout del backoffice: menú lateral (responsive), barra superior y contenido.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -8,40 +8,138 @@ import { cn } from '@vedere/ui';
 import type { SessionUser } from '@/lib/session';
 import { api } from '@/lib/api-client';
 
-const NAV: Array<{ href: string; label: string; adminOnly?: boolean; exact?: boolean }> = [
-  { href: '/admin', label: 'Dashboard', exact: true },
-  { href: '/admin/productos', label: 'Productos' },
-  { href: '/admin/categorias', label: 'Categorías' },
-  { href: '/admin/marcas', label: 'Marcas' },
-  { href: '/admin/colecciones', label: 'Colecciones' },
-  { href: '/admin/usuarios', label: 'Usuarios', adminOnly: true },
-  { href: '/admin/pedidos', label: 'Pedidos' },
-  { href: '/admin/solicitudes', label: 'Cambios y devoluciones' },
-  { href: '/admin/opticas', label: 'Ópticas' },
-  { href: '/admin/pedidos-mayoristas', label: 'Pedidos mayoristas' },
-  { href: '/admin/cuentas', label: 'Cuentas corrientes' },
-  { href: '/admin/niveles', label: 'Niveles de ópticas' },
-  { href: '/admin/liquidaciones', label: 'Liquidaciones' },
-  { href: '/admin/promos', label: 'Barra de promo' },
-  { href: '/admin/cupones', label: 'Cupones' },
-  { href: '/admin/mensajes', label: 'Mensajes' },
-  { href: '/admin/reportes', label: 'Reportes' },
-  { href: '/admin/plantillas', label: 'Plantillas de email' },
-  { href: '/admin/legal', label: 'Páginas legales' },
-  { href: '/admin/arrepentimientos', label: 'Arrepentimientos' },
-  { href: '/admin/newsletter', label: 'Newsletter' },
-  { href: '/admin/redirecciones', label: 'Redirecciones', adminOnly: true },
-  { href: '/admin/configuracion', label: 'Configuración' },
+interface NavItem {
+  href: string;
+  label: string;
+  adminOnly?: boolean;
+  exact?: boolean;
+}
+
+interface NavSeccion {
+  id: string;
+  titulo: string | null;
+  items: NavItem[];
+}
+
+const SECCIONES: NavSeccion[] = [
+  { id: 'inicio', titulo: null, items: [{ href: '/admin', label: 'Dashboard', exact: true }] },
+  {
+    id: 'ventas',
+    titulo: 'Ventas',
+    items: [
+      { href: '/admin/pedidos', label: 'Pedidos' },
+      { href: '/admin/solicitudes', label: 'Cambios y devoluciones' },
+      { href: '/admin/arrepentimientos', label: 'Arrepentimientos' },
+    ],
+  },
+  {
+    id: 'catalogo',
+    titulo: 'Catálogo',
+    items: [
+      { href: '/admin/productos', label: 'Productos' },
+      { href: '/admin/productos/escanear', label: 'Cargar stock' },
+      { href: '/admin/productos/precios', label: 'Actualizar precios' },
+      { href: '/admin/categorias', label: 'Categorías' },
+      { href: '/admin/marcas', label: 'Marcas' },
+      { href: '/admin/colecciones', label: 'Colecciones' },
+    ],
+  },
+  {
+    id: 'opticas',
+    titulo: 'Ópticas (mayorista)',
+    items: [
+      { href: '/admin/opticas', label: 'Ópticas' },
+      { href: '/admin/pedidos-mayoristas', label: 'Pedidos mayoristas' },
+      { href: '/admin/cuentas', label: 'Cuentas corrientes' },
+      { href: '/admin/liquidaciones', label: 'Liquidaciones' },
+      { href: '/admin/niveles', label: 'Niveles y logros' },
+    ],
+  },
+  {
+    id: 'clientes',
+    titulo: 'Clientes',
+    items: [
+      { href: '/admin/mensajes', label: 'Mensajes' },
+      { href: '/admin/newsletter', label: 'Suscriptores newsletter' },
+    ],
+  },
+  {
+    id: 'marketing',
+    titulo: 'Marketing',
+    items: [
+      { href: '/admin/cupones', label: 'Cupones' },
+      { href: '/admin/promos', label: 'Barra de promo' },
+      { href: '/admin/plantillas', label: 'Plantillas de email' },
+    ],
+  },
+  {
+    id: 'analytics',
+    titulo: 'Analytics',
+    items: [{ href: '/admin/reportes', label: 'Reportes' }],
+  },
+  {
+    id: 'administracion',
+    titulo: 'Administración',
+    items: [
+      { href: '/admin/configuracion', label: 'Configuración' },
+      { href: '/admin/usuarios', label: 'Usuarios y permisos', adminOnly: true },
+      { href: '/admin/legal', label: 'Páginas legales' },
+      { href: '/admin/redirecciones', label: 'Redirecciones', adminOnly: true },
+    ],
+  },
 ];
+
+const CLAVE_PLEGADAS = 'vedere-admin-menu-plegadas';
+
+function leerPlegadas(): string[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(CLAVE_PLEGADAS) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** El ítem activo es el de href más largo que coincide (así "Cargar stock" no marca también "Productos"). */
+function hrefActivo(pathname: string, items: NavItem[]): string | null {
+  let mejor: NavItem | null = null;
+  for (const i of items) {
+    const coincide = i.exact
+      ? pathname === i.href
+      : pathname === i.href || pathname.startsWith(i.href + '/');
+    if (coincide && (!mejor || i.href.length > mejor.href.length)) mejor = i;
+  }
+  return mejor?.href ?? null;
+}
 
 export function AdminShell({ user, children }: { user: SessionUser; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [plegadas, setPlegadas] = useState<string[]>([]);
 
-  const items = NAV.filter((i) => !i.adminOnly || user.rol === 'ADMIN');
-  const isActive = (i: (typeof NAV)[number]) =>
-    i.exact ? pathname === i.href : pathname === i.href || pathname.startsWith(i.href + '/');
+  useEffect(() => setPlegadas(leerPlegadas()), []);
+
+  const secciones = SECCIONES.map((sec) => ({
+    ...sec,
+    items: sec.items.filter((i) => !i.adminOnly || user.rol === 'ADMIN'),
+  })).filter((sec) => sec.items.length > 0);
+  const activo = hrefActivo(
+    pathname,
+    secciones.flatMap((sec) => sec.items),
+  );
+
+  function alternar(id: string) {
+    setPlegadas((l) => {
+      const next = l.includes(id) ? l.filter((x) => x !== id) : [...l, id];
+      try {
+        window.localStorage.setItem(CLAVE_PLEGADAS, JSON.stringify(next));
+      } catch {
+        // Sin almacenamiento: el estado dura hasta recargar.
+      }
+      return next;
+    });
+  }
 
   async function logout() {
     try {
@@ -53,29 +151,71 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   }
 
   const nav = (
-    <nav className="flex flex-1 flex-col gap-0.5 px-3" aria-label="Backoffice">
-      {items.map((i) => (
-        <Link
-          key={i.href}
-          href={i.href}
-          onClick={() => setOpen(false)}
-          className={cn(
-            'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-            isActive(i)
-              ? 'bg-negro text-blanco'
-              : 'text-negro/80 hover:bg-gris-claro hover:text-negro',
-          )}
-        >
-          {i.label}
-        </Link>
-      ))}
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4" aria-label="Backoffice">
+      {secciones.map((sec) => {
+        const tieneActivo = sec.items.some((i) => i.href === activo);
+        // La sección de la página actual siempre se ve, aunque esté plegada.
+        const abierta = !sec.titulo || tieneActivo || !plegadas.includes(sec.id);
+        const listaId = `menu-${sec.id}`;
+        return (
+          <div key={sec.id} className={sec.titulo ? 'mt-2' : undefined}>
+            {sec.titulo && (
+              <button
+                type="button"
+                onClick={() => alternar(sec.id)}
+                aria-expanded={abierta}
+                aria-controls={listaId}
+                disabled={tieneActivo}
+                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gris-medio hover:text-negro disabled:cursor-default disabled:hover:text-gris-medio"
+              >
+                {sec.titulo}
+                {!tieneActivo && (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    aria-hidden="true"
+                    className={cn('transition-transform', abierta ? 'rotate-0' : '-rotate-90')}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                )}
+              </button>
+            )}
+            {abierta && (
+              <ul id={listaId} className="flex flex-col gap-0.5">
+                {sec.items.map((i) => (
+                  <li key={i.href}>
+                    <Link
+                      href={i.href}
+                      onClick={() => setOpen(false)}
+                      aria-current={i.href === activo ? 'page' : undefined}
+                      className={cn(
+                        'block rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                        i.href === activo
+                          ? 'bg-negro text-blanco'
+                          : 'text-negro/80 hover:bg-gris-claro hover:text-negro',
+                      )}
+                    >
+                      {i.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 
   return (
     <div className="flex min-h-screen bg-gris-claro/40">
       {/* Sidebar desktop */}
-      <aside className="hidden w-60 print:!hidden shrink-0 flex-col border-r border-negro/10 bg-blanco lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 print:!hidden shrink-0 flex-col border-r border-negro/10 bg-blanco lg:flex">
         <div className="px-6 py-5">
           <Link href="/admin" className="font-campaign text-2xl">
             Vedere
