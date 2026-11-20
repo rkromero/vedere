@@ -7,7 +7,7 @@ import { cn } from '@vedere/ui';
 import { ApiError, api, errorMessage } from '@/lib/api-client';
 import { LABELS, formatFecha, options } from '@/lib/format';
 import type { EstadoProducto, Forma, Genero, Linea, Material } from '@/lib/format';
-import type { Categoria, Coleccion, Marca, Producto } from '@/lib/types';
+import type { Categoria, Coleccion, Imagen, Marca, Producto } from '@/lib/types';
 import {
   Badge,
   Btn,
@@ -30,6 +30,8 @@ import { VariantesTab } from './VariantesTab';
 import { ImagenesTab } from './ImagenesTab';
 import { SeoTab } from './SeoTab';
 import { LectorCodigoModal } from './LectorCodigo';
+import { IdentificarFotoModal } from './IdentificarFoto';
+import type { ResultadoFoto, SugerenciaFoto } from './IdentificarFoto';
 import {
   asegurarMarca,
   buscarCodigo,
@@ -96,6 +98,7 @@ export function ProductoForm({
   categorias,
   colecciones,
   codigoInicial,
+  abrirFoto,
 }: {
   producto: Producto | null;
   marcas: Marca[];
@@ -103,6 +106,8 @@ export function ProductoForm({
   colecciones: Coleccion[];
   /** Código de barras escaneado antes de entrar (?codigo=): se busca y se vuelca al abrir. */
   codigoInicial?: string;
+  /** Abre "Identificar por foto" al entrar (?foto=1). */
+  abrirFoto?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -119,6 +124,11 @@ export function ProductoForm({
   const [marcasLista, setMarcasLista] = useState<Marca[]>(marcas);
   const [lector, setLector] = useState<{ abierto: boolean; varianteKey?: string }>({ abierto: false });
   const [escaneo, setEscaneo] = useState<string | null>(null);
+  const [fotoAbierta, setFotoAbierta] = useState(false);
+  /** Lo que leyó la IA en la última identificación por foto (para que se pueda revisar). */
+  const [lecturaIA, setLecturaIA] = useState<SugerenciaFoto | null>(null);
+  /** Código escaneado que no trajo datos públicos: se ofrece identificar por foto. */
+  const [codigoSinDatos, setCodigoSinDatos] = useState<string | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -148,6 +158,7 @@ export function ProductoForm({
    */
   async function aplicarCodigo(codigo: string, varianteKey?: string) {
     setEscaneo('Buscando el código…');
+    setCodigoSinDatos(null);
     try {
       const r = await buscarCodigo(codigo);
       const propia = r.existente && stateRef.current.variantes.some((v) => v.id === r.existente!.varianteId);
@@ -210,8 +221,7 @@ export function ProductoForm({
         toast.ok(`${partes.join(' + ')} cargados. Revisalos y completá el precio.`);
         if (fotos.fallidas) toast.error(`${fotos.fallidas} foto${fotos.fallidas === 1 ? '' : 's'} no se pudo descargar`);
       } else {
-        toast.error('No encontramos datos de ese código: cargamos el código y el SKU, completá el resto a mano.');
-        setTab('variantes');
+        setCodigoSinDatos(r.codigo);
       }
     } catch (err) {
       toast.error(errorMessage(err));
@@ -220,14 +230,86 @@ export function ProductoForm({
     }
   }
 
+  /**
+   * Vuelca el resultado de "Identificar por foto": datos del producto (en el alta), la variante
+   * (colores, SKU, stock 1) y las fotos: primero las propias aptas para catálogo, después las de la web.
+   */
+  async function aplicarFoto(r: ResultadoFoto) {
+    const s = r.sugerencia;
+    setLecturaIA(s);
+    setCodigoSinDatos(null);
+    setEscaneo('Completando los datos…');
+    try {
+      let marcaId: string | null = null;
+      if (!esEdicion && s.marca) {
+        try {
+          const { marca, creada } = await asegurarMarca(s.marca, null, marcasLista);
+          if (marca) {
+            marcaId = marca.id;
+            if (creada) {
+              setMarcasLista((l) => [...l, marca]);
+              toast.ok(`Marca “${marca.nombre}” creada`);
+            }
+          }
+        } catch {
+          // Seguimos sin marca.
+        }
+      }
+
+      const { key } = varianteDestino(stateRef.current);
+      const destino = stateRef.current.variantes.find((v) => v.key === key);
+      const alt = s.nombre.slice(0, 160);
+      const propias: Imagen[] = r.fotosPropias.map((f, i) => ({
+        tipo: i === 0 ? 'FRENTE' : 'OTRA',
+        orden: i,
+        url: f.url,
+        urlMediana: f.urlMediana,
+        urlMiniatura: f.urlMiniatura,
+        alt,
+      }));
+      let web: Imagen[] = [];
+      let fallidas = 0;
+      if (s.imagenes.length && (!destino || destino.imagenes.length === 0)) {
+        setEscaneo(`Importando ${s.imagenes.length} foto${s.imagenes.length === 1 ? '' : 's'} de la web…`);
+        try {
+          const res = await importarFotos(s.imagenes, alt, propias.length);
+          web = res.imagenes;
+          fallidas = res.fallidas;
+        } catch {
+          fallidas = s.imagenes.length;
+        }
+      }
+      const imagenes = [...propias, ...web];
+
+      setState((st) => {
+        const base = !esEdicion ? completarProducto(st, s, marcaId) : st;
+        const { variantes, key: k } = varianteDestino(base, key);
+        return {
+          ...base,
+          variantes: variantes.map((v) =>
+            v.key === k ? completarVariante(v, v.codigoBarras, s, imagenes) : v,
+          ),
+        };
+      });
+      setGeneral(null);
+      setTab('datos');
+      const partes = [s.fichaWeb ? 'Datos de la foto y de la web' : 'Datos leídos de la foto'];
+      if (imagenes.length) partes.push(`${imagenes.length} foto${imagenes.length === 1 ? '' : 's'}`);
+      toast.ok(`${partes.join(' + ')} cargados. Revisalos y completá el precio.`);
+      if (fallidas) toast.error(`${fallidas} foto${fallidas === 1 ? '' : 's'} de la web no se pudo descargar`);
+    } finally {
+      setEscaneo(null);
+    }
+  }
+
   const codigoAplicado = useRef(false);
   useEffect(() => {
-    if (codigoInicial && !codigoAplicado.current) {
-      codigoAplicado.current = true;
-      void aplicarCodigo(codigoInicial);
-    }
+    if (codigoAplicado.current) return;
+    codigoAplicado.current = true;
+    if (codigoInicial) void aplicarCodigo(codigoInicial);
+    if (abrirFoto) setFotoAbierta(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codigoInicial]);
+  }, []);
 
   // Árbol de categorías: padres activos con sus hijas (ordenados).
   const arbol = useMemo(() => {
@@ -406,6 +488,9 @@ export function ProductoForm({
             >
               {esEdicion ? 'Escanear variante nueva' : 'Escanear código'}
             </Btn>
+            <Btn variant="secondary" onClick={() => setFotoAbierta(true)} disabled={guardando || escaneo !== null}>
+              Identificar por foto
+            </Btn>
             {esEdicion && (
               <Btn variant="danger" onClick={() => setConfirmarEliminar(true)} disabled={guardando}>
                 Eliminar
@@ -441,9 +526,63 @@ export function ProductoForm({
           <p className="text-sm text-negro/80">
             ¿Tenés el anteojo a mano? Escaneá el código de barras y completamos nombre, marca, medidas, color y fotos.
           </p>
-          <Btn size="sm" onClick={() => setLector({ abierto: true })}>
-            Escanear código
-          </Btn>
+          <div className="flex shrink-0 gap-2">
+            <Btn size="sm" onClick={() => setLector({ abierto: true })}>
+              Escanear código
+            </Btn>
+            <Btn size="sm" variant="secondary" onClick={() => setFotoAbierta(true)}>
+              Foto de la patilla
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {codigoSinDatos && !escaneo && (
+        <div
+          role="status"
+          className="mb-4 flex flex-col gap-3 rounded-xl border border-sol/60 bg-sol/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="text-sm text-negro/80">
+            No hay información pública del código <span className="font-mono">{codigoSinDatos}</span> (ya lo cargamos
+            en la variante). Sacale una foto a la patilla por dentro y completamos marca, modelo, color y medidas.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Btn size="sm" onClick={() => setFotoAbierta(true)}>
+              Identificar por foto
+            </Btn>
+            <Btn size="sm" variant="ghost" onClick={() => setCodigoSinDatos(null)}>
+              Lo cargo a mano
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {lecturaIA && (
+        <div className="mb-4 rounded-xl border border-negro/10 bg-gris-claro px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">
+              La IA leyó: {[lecturaIA.marca, lecturaIA.modelo, lecturaIA.codigoColor].filter(Boolean).join(' · ') || 'sin marca ni modelo'}
+              {(lecturaIA.calibreMm || lecturaIA.puenteMm || lecturaIA.varillaMm) &&
+                ` · ${[lecturaIA.calibreMm, lecturaIA.puenteMm, lecturaIA.varillaMm].map((x) => x ?? '–').join('/')}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Badge tone={lecturaIA.confianza === 'alta' ? 'ok' : lecturaIA.confianza === 'media' ? 'warn' : 'danger'}>
+                Confianza {lecturaIA.confianza}
+              </Badge>
+              <Btn size="sm" variant="ghost" onClick={() => setLecturaIA(null)}>
+                Ocultar
+              </Btn>
+            </div>
+          </div>
+          {lecturaIA.textoLeido && (
+            <p className="mt-1 font-mono text-xs text-gris-medio">Texto de la patilla: {lecturaIA.textoLeido}</p>
+          )}
+          {lecturaIA.notas && <p className="mt-1 text-xs text-negro/70">{lecturaIA.notas}</p>}
+          {!lecturaIA.fichaWeb && (
+            <p className="mt-1 text-xs text-gris-medio">
+              No encontramos la ficha del modelo en internet: revisá descripción y fotos.
+            </p>
+          )}
         </div>
       )}
 
@@ -874,6 +1013,12 @@ export function ProductoForm({
           </div>
         </div>
       </div>
+
+      <IdentificarFotoModal
+        open={fotoAbierta}
+        onClose={() => setFotoAbierta(false)}
+        onResultado={(r) => void aplicarFoto(r)}
+      />
 
       <LectorCodigoModal
         open={lector.abierto}

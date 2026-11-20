@@ -77,6 +77,13 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
   UPCITEMDB_USER_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   BARCODELOOKUP_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Identificación de anteojos por foto (patilla, frente) con Claude. Sin clave, la función queda apagada.
+  ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  // Después de leer la foto, busca la ficha del modelo en la web (descripción y fotos).
+  IA_BUSQUEDA_WEB: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 
   // ---- Prompt 6 ----
   // Login con Google (OAuth 2.0, flujo de código). Sin credenciales el botón no se muestra.

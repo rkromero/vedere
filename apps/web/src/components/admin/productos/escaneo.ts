@@ -78,8 +78,8 @@ export function completarVariante(
 ): VarianteForm {
   return {
     ...v,
-    codigoBarras: codigo,
-    sku: vacio(v.sku) ? skuSugerido(s, codigo) : v.sku,
+    codigoBarras: codigo || v.codigoBarras,
+    sku: vacio(v.sku) ? skuSugerido(s, codigo || v.codigoBarras) : v.sku,
     colorArmazon: vacio(v.colorArmazon) ? (s?.colorArmazon ?? '') : v.colorArmazon,
     colorArmazonHex:
       vacio(v.colorArmazon) && s?.colorArmazonHex ? s.colorArmazonHex : v.colorArmazonHex,

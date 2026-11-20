@@ -41,6 +41,7 @@ export default async function EditarProductoPage({
       categorias={categorias.items}
       colecciones={colecciones.items}
       codigoInicial={codigo}
+      abrirFoto={sp.foto === '1'}
     />
   );
 }

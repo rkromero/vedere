@@ -12,6 +12,7 @@ import {
   normalizarCodigo,
 } from '../../lib/codigo-barras.js';
 import { ajusteStockInput } from '../../schemas/catalogo.js';
+import { identificarPorFotos } from '../../lib/identificar-foto.js';
 
 const normalizarNombre = (s: string) =>
   s
@@ -81,6 +82,33 @@ const codigoBarrasRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return { codigo, existente, sugerencia, marcaId, avisos };
+    },
+  );
+
+  /** Estado de la identificación por foto (para mostrar u ocultar el botón). */
+  app.get('/identificar-foto/config', async () => ({ habilitada: !!app.env.ANTHROPIC_API_KEY }));
+
+  /**
+   * Identifica un anteojo a partir de 1 a 4 fotos (multipart, campo `file` repetido): patilla por dentro,
+   * frente, costado o etiqueta. Devuelve la sugerencia de producto y las fotos aptas para catálogo ya guardadas.
+   */
+  app.post(
+    '/identificar-foto',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request) => {
+      const fotos: Buffer[] = [];
+      for await (const part of request.files({ limits: { files: 4 } })) {
+        if (!part.mimetype.startsWith('image/')) {
+          throw Errors.badRequest(`Tipo de archivo no permitido: ${part.mimetype}`);
+        }
+        const buffer = await part.toBuffer();
+        if (part.file.truncated) {
+          throw Errors.badRequest(`Cada foto puede pesar hasta ${app.env.MAX_UPLOAD_MB} MB`);
+        }
+        fotos.push(buffer);
+      }
+      if (fotos.length === 0) throw Errors.badRequest('Enviá al menos una foto en el campo "file"');
+      return identificarPorFotos(app.env, fotos);
     },
   );
 
