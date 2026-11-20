@@ -148,7 +148,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       barcode-detector:
-        specifier: '3'
+        specifier: ^3.2.4
         version: 3.2.4(@types/emscripten@1.41.6)
       leaflet:
         specifier: 1.9.4
